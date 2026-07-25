@@ -3,14 +3,12 @@
 /**
  * ============================================================
  * src/main.js — 钓趣 (Fishing Fun) 游戏初始化入口
- * 版本: 1.0
- * 职责: Canvas 上下文获取、窗口自适应、requestAnimationFrame 主循环
+ * 版本: 1.1 (T-002: 集成 CSV 数据加载)
+ * 职责: Canvas 上下文获取、窗口自适应、数据加载、rAF 主循环
  * ============================================================
  */
 
-/* --- 导入（预留模块入口） --- */
-// import { GameLoop } from './core/GameLoop.js';
-// import { ScreenRouter } from './ui/ScreenRouter.js';
+import { loadAllGameData } from './data/GameData.js';
 
 /* ============================================================
    常量 & 状态
@@ -33,6 +31,9 @@ let fpsTimer = 0;
 
 /** @type {string} 当前帧率文本 */
 let fpsDisplay = '-- FPS';
+
+/** @type {boolean} 游戏主循环是否已启动 */
+let _gameRunning = false;
 
 /* ============================================================
    Canvas 尺寸自适应
@@ -140,11 +141,134 @@ function drawTestScene(dt) {
   ctx.textAlign = 'right';
   ctx.fillText(fpsDisplay, width - 16, 16);
 
-  // --- 状态提示 ---
-  ctx.fillStyle = '#5a8a9a';
-  ctx.textAlign = 'center';
-  ctx.font = '12px "Courier New", Courier, monospace';
-  ctx.fillText('Canvas 初始化成功 | 主循环稳定运行', width / 2, height - 24);
+  // --- 数据加载状态 ---
+  if (window.GameData) {
+    const fishCount = window.GameData.FishTable
+      ? window.GameData.FishTable.length : 0;
+    ctx.fillStyle = '#5a8a9a';
+    ctx.textAlign = 'center';
+    ctx.font = '12px "Courier New", Courier, monospace';
+    ctx.fillText(
+      `数据已加载 | 鱼种: ${fishCount} | Canvas 初始化成功 | 主循环稳定运行`,
+      width / 2, height - 24
+    );
+  }
+}
+
+/* ============================================================
+   加载遮罩控制
+   ============================================================ */
+
+/**
+ * 隐藏加载遮罩层（带渐隐动画）
+ */
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('loading-overlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  setTimeout(() => {
+    overlay.style.display = 'none';
+  }, 500);
+}
+
+/**
+ * 显示加载错误信息（替换遮罩层内容）
+ * @param {Error} err - 捕获的错误对象
+ */
+function showLoadingError(err) {
+  const overlay = document.getElementById('loading-overlay');
+  if (!overlay) return;
+
+  // 替换遮罩内容为错误提示
+  overlay.innerHTML = `
+    <div class="loading-content" style="color: #e06060;">
+      <p class="loading-title" style="color: #e06060;">⚠️ 数据加载失败</p>
+      <p style="color: #c0d0e0; margin: 1.5rem 0; font-size: 1rem;">
+        数据加载失败，请检查 table 目录下的 CSV 文件。
+      </p>
+      <p style="color: #6a8a9a; font-size: 0.8rem; max-width: 400px; margin: 0 auto;">
+        ${err.message || '未知错误'}
+      </p>
+      <p style="color: #4a6a7a; font-size: 0.75rem; margin-top: 2rem;">
+        请确认文件存在于 table/ 目录下，格式正确
+      </p>
+    </div>
+  `;
+
+  // 移除 spinner 动画（已替换 innerHTML 无需额外操作）
+  console.error('[GameBoot] 数据加载失败:', err);
+}
+
+/**
+ * 显示 file:// 协议错误提示（引导用户使用 HTTP 服务器）
+ */
+function showFileProtocolError() {
+  const overlay = document.getElementById('loading-overlay');
+  if (!overlay) return;
+
+  overlay.innerHTML =
+    '<div class="loading-content">' +
+      '<p class="loading-title" style="color: #f0e6c0;">🌐 需要 HTTP 服务器</p>' +
+      '<p style="color: #c0d0e0; margin: 1.5rem 0; font-size: 1rem;">' +
+        '请使用本地 HTTP 服务器打开此页面，而非直接双击 HTML 文件。' +
+      '</p>' +
+      '<p style="color: #6a8a9a; font-size: 0.85rem; margin-top: 1rem;">在项目目录下运行：</p>' +
+      '<code style="display: inline-block; background: #2a4a5a; color: #f0e6c0; ' +
+            'padding: 6px 12px; margin-top: 6px; font-size: 0.9rem; border-radius: 2px;">' +
+        'python -m http.server 8080' +
+      '</code>' +
+      '<p style="color: #4a6a7a; font-size: 0.75rem; margin-top: 1.5rem;">' +
+        '然后访问 <span style="color: #8ab0c0;">http://localhost:8080/</span>' +
+      '</p>' +
+    '</div>';
+
+  console.warn('[GameBoot] 检测到 file:// 协议，请使用 HTTP 服务器');
+}
+
+/* ============================================================
+   游戏启动引导
+   ============================================================ */
+
+/**
+ * 启动游戏 — 数据加载成功后调用
+ */
+function startGame() {
+  if (_gameRunning) return;
+  _gameRunning = true;
+
+  // 隐藏加载遮罩
+  hideLoadingOverlay();
+
+  // 启动主循环
+  requestAnimationFrame(gameLoop);
+}
+
+/**
+ * 游戏启动引导流程
+ * 1. 初始化 Canvas 尺寸
+ * 2. 并行加载所有 CSV 数据
+ * 3. 成功 → 启动主循环；失败 → 显示错误
+ */
+async function bootGame() {
+  // 先确保 Canvas 尺寸正确
+  resizeCanvas();
+
+  // 检测 file:// 协议（模块可能加载成功但 fetch 不可用）
+  if (window.location.protocol === 'file:') {
+    showFileProtocolError();
+    return;
+  }
+
+  try {
+    // 并行加载所有 CSV 数据
+    await loadAllGameData();
+
+    // 加载成功，启动游戏
+    startGame();
+  } catch (err) {
+    // 加载失败，显示错误
+    showLoadingError(err);
+  }
 }
 
 /* ============================================================
@@ -156,30 +280,12 @@ window.addEventListener('resize', () => {
   resizeCanvas();
 });
 
-// 加载完成后隐藏遮罩层
-window.addEventListener('load', () => {
-  // 延迟一小段时间以便看到加载界面效果（正式版可移除 setTimeout）
-  setTimeout(() => {
-    const overlay = document.getElementById('loading-overlay');
-    if (overlay) {
-      overlay.classList.add('hidden');
-      // 完全隐藏后从 DOM 移除
-      setTimeout(() => {
-        overlay.style.display = 'none';
-      }, 500);
-    }
-  }, 600);
-});
-
 /* ============================================================
    启动
    ============================================================ */
 
-// 首次设置 Canvas 尺寸
-resizeCanvas();
-
-// 启动主循环
-requestAnimationFrame(gameLoop);
+// 启动引导流程（加载数据 → 初始化游戏）
+bootGame();
 
 /* ============================================================
    导出（预留：供其他模块引用）

@@ -21,6 +21,30 @@
   <!-- 游戏主 Canvas -->
   <canvas id="game-canvas" class="game-canvas"></canvas>
 
+  <!-- file:// 协议检测（非模块脚本，确保在所有浏览器中优先执行） -->
+  <script>
+    (function () {
+      if (window.location.protocol !== 'file:') return;
+      var el = document.getElementById('loading-overlay');
+      if (!el) return;
+      el.innerHTML =
+        '<div class="loading-content">' +
+          '<p class="loading-title" style="color: #f0e6c0;">🌐 需要 HTTP 服务器</p>' +
+          '<p style="color: #c0d0e0; margin: 1.5rem 0; font-size: 1rem;">' +
+            '请使用本地 HTTP 服务器打开此页面，而非直接双击 HTML 文件。' +
+          '</p>' +
+          '<p style="color: #6a8a9a; font-size: 0.85rem; margin-top: 1rem;">在项目目录下运行：</p>' +
+          '<code style="display: inline-block; background: #2a4a5a; color: #f0e6c0; ' +
+                'padding: 6px 12px; margin-top: 6px; font-size: 0.9rem; border-radius: 2px;">' +
+            'python -m http.server 8080' +
+          '</code>' +
+          '<p style="color: #4a6a7a; font-size: 0.75rem; margin-top: 1.5rem;">' +
+            '然后访问 <span style="color: #8ab0c0;">http://localhost:8080/</span>' +
+          '</p>' +
+        '</div>';
+    })();
+  </script>
+
   <!-- 主入口脚本（ES Module） -->
   <script type="module" src="src/main.js"></script>
 </body>
