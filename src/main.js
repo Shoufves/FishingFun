@@ -9,6 +9,7 @@
  */
 
 import { loadAllGameData } from './data/GameData.js';
+import { load as loadSave, save as saveSave, getSaveKey } from './core/SaveManager.js';
 
 /* ============================================================
    常量 & 状态
@@ -145,11 +146,19 @@ function drawTestScene(dt) {
   if (window.GameData) {
     const fishCount = window.GameData.FishTable
       ? window.GameData.FishTable.length : 0;
+
+    // 存档信息
+    let saveInfo = '存档: 未加载';
+    if (window.GameState) {
+      const { player, timestamp } = window.GameState;
+      saveInfo = `Lv.${player.level} | 金币: ${player.gold} | 存档: ${timestamp > 0 ? '已加载' : '初始'}`;
+    }
+
     ctx.fillStyle = '#5a8a9a';
     ctx.textAlign = 'center';
     ctx.font = '12px "Courier New", Courier, monospace';
     ctx.fillText(
-      `数据已加载 | 鱼种: ${fishCount} | Canvas 初始化成功 | 主循环稳定运行`,
+      `数据已加载 | 鱼种: ${fishCount} | ${saveInfo}`,
       width / 2, height - 24
     );
   }
@@ -260,10 +269,35 @@ async function bootGame() {
   }
 
   try {
-    // 并行加载所有 CSV 数据
+    // 1. 并行加载所有 CSV 数据
     await loadAllGameData();
 
-    // 加载成功，启动游戏
+    // 2. 加载或创建存档
+    let saveData = loadSave();
+
+    if (!saveData) {
+      // 首次启动：使用默认存档
+      saveData = {
+        version: 1,
+        player: { level: 1, xp: 0, gold: 0 },
+        inventory: { equipment: [], baits: [], items: [] },
+        equipped: { rod: null, reel: null, line: null, hook: null },
+        fishdex: { caught: [], totalPerSpecies: {} },
+        aquarium: { slots: [], capacity: 10 },
+        settings: { musicVolume: 0.7, sfxVolume: 1.0, language: 'zh' },
+        unlockedMaps: [1],
+        timestamp: Date.now(),
+      };
+      saveSave(saveData);
+      console.log('[GameBoot] 首次启动，已创建默认存档');
+    } else {
+      console.log('[GameBoot] 存档已加载（' + getSaveKey() + '）');
+    }
+
+    // 3. 挂载到全局，供后续模块访问
+    window.GameState = saveData;
+
+    // 4. 启动游戏
     startGame();
   } catch (err) {
     // 加载失败，显示错误

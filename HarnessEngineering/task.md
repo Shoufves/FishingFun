@@ -48,7 +48,7 @@
 ---
 
 ### T-003: 存档系统（localStorage）
-- **状态**: pending
+- **状态**: [x]
 - **前置依赖**: T-001
 - **模块**: Core/SaveManager
 - **步骤**:
