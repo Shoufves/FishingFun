@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>钓趣 — Fishing Fun</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <!-- 加载遮罩层 -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-content">
+      <p class="loading-title">🎣 钓趣</p>
+      <p class="loading-subtitle">Fishing Fun</p>
+      <div class="loading-spinner"></div>
+      <p class="loading-text">加载中...</p>
+    </div>
+  </div>
+
+  <!-- 游戏主 Canvas -->
+  <canvas id="game-canvas" class="game-canvas"></canvas>
+
+  <!-- 主入口脚本（ES Module） -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
