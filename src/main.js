@@ -10,6 +10,10 @@
 
 import { loadAllGameData } from './data/GameData.js';
 import { load as loadSave, save as saveSave, getSaveKey } from './core/SaveManager.js';
+import {
+  ScreenRouter, ScreenType,
+  TitleScreen, MapSelectScreen, Screen,
+} from './core/ScreenRouter.js';
 
 /* ============================================================
    常量 & 状态
@@ -35,6 +39,9 @@ let fpsDisplay = '-- FPS';
 
 /** @type {boolean} 游戏主循环是否已启动 */
 let _gameRunning = false;
+
+/** @type {ScreenRouter|null} 画面路由实例 */
+let router = null;
 
 /* ============================================================
    Canvas 尺寸自适应
@@ -83,84 +90,39 @@ function gameLoop(timestamp) {
   // --- 清屏 ---
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-  // ============================================================
-  // TODO: 后续将渲染委托给各 Screen/Manager
-  // 当前阶段仅绘制一个简单的测试图形
-  // ============================================================
-  drawTestScene(dt);
+  // --- 委托给当前屏幕 ---
+  const screen = router ? router.getCurrentScreen() : null;
+  if (screen) {
+    screen.update(dt);
+    screen.render(ctx);
+  }
+
+  // --- HUD 叠加层（FPS + 调试信息）---
+  drawDebugOverlay();
 
   // --- 请求下一帧 ---
   requestAnimationFrame(gameLoop);
 }
 
-/* ============================================================
-   测试绘制
-   ============================================================ */
-
 /**
- * 绘制测试场景 — 用于验证 Canvas 和主循环正常工作
- * @param {number} dt - 距上一帧的时间差（ms）
+ * 绘制调试叠加层（FPS、路由栈信息等）
  */
-function drawTestScene(dt) {
+function drawDebugOverlay() {
   const width = window.innerWidth;
   const height = window.innerHeight;
 
-  // --- 背景 ---
-  // 底部渐变：模拟水面与深水区
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, '#0a1a2a');
-  gradient.addColorStop(0.6, '#1a3a5a');
-  gradient.addColorStop(1, '#0a2a3a');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
-  // --- 水面波纹（正弦动画） ---
-  const time = performance.now() / 1000;
-  ctx.strokeStyle = 'rgba(100, 180, 220, 0.2)';
-  ctx.lineWidth = 2;
-
-  for (let row = 0; row < 3; row++) {
-    ctx.beginPath();
-    const baseY = height * (0.5 + row * 0.15);
-    for (let x = 0; x <= width; x += 8) {
-      const y = baseY + Math.sin(x * 0.02 + time * 1.5 + row * 2) * 8
-                    + Math.sin(x * 0.01 + time * 0.8) * 4;
-      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-
-  // --- 测试文字 ---
-  ctx.font = '16px "Courier New", Courier, monospace';
-  ctx.fillStyle = '#a0c4e0';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('🎣 钓趣 — Fishing Fun', 16, 16);
-
-  // --- FPS 显示 ---
+  // FPS（右上角）
+  ctx.font = '12px "Courier New", Courier, monospace';
   ctx.fillStyle = '#f0e6c0';
   ctx.textAlign = 'right';
-  ctx.fillText(fpsDisplay, width - 16, 16);
+  ctx.textBaseline = 'top';
+  ctx.fillText(fpsDisplay, width - 12, 12);
 
-  // --- 数据加载状态 ---
-  if (window.GameData) {
-    const fishCount = window.GameData.FishTable
-      ? window.GameData.FishTable.length : 0;
-
-    // 存档信息
-    let saveInfo = '存档: 未加载';
-    if (window.GameState) {
-      const { player, timestamp } = window.GameState;
-      saveInfo = `Lv.${player.level} | 金币: ${player.gold} | 存档: ${timestamp > 0 ? '已加载' : '初始'}`;
-    }
-
-    ctx.fillStyle = '#5a8a9a';
-    ctx.textAlign = 'center';
-    ctx.font = '12px "Courier New", Courier, monospace';
-    ctx.fillText(
-      `数据已加载 | 鱼种: ${fishCount} | ${saveInfo}`,
-      width / 2, height - 24
-    );
+  // 路由栈深（右上角 FPS 下方）
+  if (router) {
+    ctx.font = '10px "Courier New", Courier, monospace';
+    ctx.fillStyle = '#5a7a8a';
+    ctx.fillText('栈深: ' + router.getStackDepth(), width - 12, 28);
   }
 }
 
@@ -235,6 +197,62 @@ function showFileProtocolError() {
 }
 
 /* ============================================================
+   FishingScreen 占位屏
+   ============================================================ */
+
+/**
+ * 钓鱼场景占位屏 — T-004 仅用于验证路由切换
+ * 后续 T-007 及以后会实现完整内容
+ */
+class FishingScreen extends Screen {
+  /** @override */
+  onEnter(params) {
+    super.onEnter();
+    console.log('[FishingScreen] 进入钓鱼场景, params:', params);
+  }
+
+  /** @override */
+  render(ctx) {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    // 简洁的占位画面
+    ctx.fillStyle = '#0a1a2a';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '22px "Courier New", Courier, monospace';
+    ctx.fillStyle = '#8ab0c0';
+    ctx.fillText('🎣 钓鱼场景（占位）', w / 2, h / 2 - 20);
+
+    ctx.font = '13px "Courier New", Courier, monospace';
+    ctx.fillStyle = '#5a7a8a';
+    ctx.fillText('按 ← 返回选择钓场', w / 2, h / 2 + 20);
+
+    // 返回按钮
+    const backBtnX = 16, backBtnY = 16, backBtnW = 80, backBtnH = 36;
+    ctx.fillStyle = '#3a5a6a';
+    ctx.fillRect(backBtnX, backBtnY, backBtnW, backBtnH);
+    ctx.fillStyle = '#1a2a3a';
+    ctx.fillRect(backBtnX + 1, backBtnY + 1, backBtnW - 2, backBtnH - 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '14px "Courier New", Courier, monospace';
+    ctx.fillStyle = '#a0c4e0';
+    ctx.fillText('← 返回', backBtnX + backBtnW / 2, backBtnY + backBtnH / 2);
+  }
+
+  /** @override */
+  _setupRegions() {
+    super._setupRegions();
+    this._addClickRegion(16, 16, 80, 36, () => {
+      this.router.pop();
+    });
+  }
+}
+
+/* ============================================================
    游戏启动引导
    ============================================================ */
 
@@ -297,7 +315,20 @@ async function bootGame() {
     // 3. 挂载到全局，供后续模块访问
     window.GameState = saveData;
 
-    // 4. 启动游戏
+    // 4. 初始化画面路由
+    router = new ScreenRouter(ctx);
+    window._router = router;  // 调试：暴露到全局供 DevTools 检查
+
+    // 注册屏幕
+    router.register(ScreenType.TITLE, () => new TitleScreen(router));
+    router.register(ScreenType.MAP_SELECT, () => new MapSelectScreen(router));
+    router.register(ScreenType.FISHING, () => new FishingScreen(router));
+
+    // 进入标题画面
+    console.log('[GameBoot] 准备进入标题画面...');
+    router.push(ScreenType.TITLE);
+
+    // 5. 启动游戏
     startGame();
   } catch (err) {
     // 加载失败，显示错误
@@ -313,6 +344,38 @@ async function bootGame() {
 window.addEventListener('resize', () => {
   resizeCanvas();
 });
+
+// --- Canvas 点击事件（鼠标 + 触控） ---
+
+/** 将页面坐标转为 Canvas CSS 像素坐标 */
+function getCanvasCoords(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+/** 点击/触摸事件分发到当前屏幕 */
+function handlePointerDown(clientX, clientY) {
+  if (!router) return;
+  const { x, y } = getCanvasCoords(clientX, clientY);
+  const screen = router.getCurrentScreen();
+  if (screen && typeof screen.handleClick === 'function') {
+    screen.handleClick(x, y);
+  }
+}
+
+// 鼠标点击
+canvas.addEventListener('click', (e) => {
+  handlePointerDown(e.clientX, e.clientY);
+});
+
+// 触控点击（移动端）
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  if (touch) {
+    handlePointerDown(touch.clientX, touch.clientY);
+  }
+}, { passive: false });
 
 /* ============================================================
    启动
