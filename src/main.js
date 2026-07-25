@@ -10,15 +10,13 @@
 
 import { loadAllGameData } from './data/GameData.js';
 import { load as loadSave, save as saveSave, getSaveKey } from './core/SaveManager.js';
-import {
-  ScreenRouter, ScreenType,
-  TitleScreen, MapSelectScreen, Screen,
-} from './core/ScreenRouter.js';
+import { ScreenRouter, ScreenType, TitleScreen, MapSelectScreen } from './core/ScreenRouter.js';
 import { Renderer } from './render/Renderer.js';
 import { BackgroundLayer } from './render/BackgroundLayer.js';
 import { WaterAnimation } from './render/WaterAnimation.js';
 import { Sprite } from './render/Sprite.js';
 import { AudioManager } from './core/AudioManager.js';
+import { FishingScreen } from './ui/screens/FishingScreen.js';
 
 /* ============================================================
    常量 & 状态
@@ -206,58 +204,7 @@ function showFileProtocolError() {
   console.warn('[GameBoot] 检测到 file:// 协议，请使用 HTTP 服务器');
 }
 
-/* ============================================================
-   FishingScreen 占位屏
-   ============================================================ */
-
-/**
- * 钓鱼场景占位屏 — T-004 仅用于验证路由切换
- * 后续 T-007 及以后会实现完整内容
- */
-class FishingScreen extends Screen {
-  /** @override */
-  onEnter(params) {
-    super.onEnter();
-    console.log('[FishingScreen] 进入钓鱼场景, params:', params);
-  }
-
-  /** @override */
-  render(ctx) {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const cx = w / 2;
-
-    ctx.fillStyle = 'rgba(5, 15, 25, 0.35)';
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = '28px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#8ab0c0';
-    ctx.fillText('🎣 钓鱼场景（占位）', cx, h / 2 - 20);
-
-    ctx.font = '16px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#5a7a8a';
-    ctx.fillText('← 返回选择钓场', cx, h / 2 + 20);
-
-    const bx = 16, by = 12, bw = 90, bh = 36;
-    ctx.fillStyle = '#3a5a6a';
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = '#1a2a3a';
-    ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = '16px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#a0c4e0';
-    ctx.fillText('← 返回', bx + bw / 2, by + bh / 2);
-  }
-
-  /** @override */
-  _setupRegions() {
-    super._setupRegions();
-    this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
-  }
-}
+/* FishingScreen 已移至 src/ui/screens/FishingScreen.js */
 
 /* ============================================================
    游戏启动引导
