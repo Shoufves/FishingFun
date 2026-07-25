@@ -163,6 +163,12 @@ class ScreenRouter {
 
     /** @type {Object<string, Function>} 屏幕类型 → 工厂函数映射 */
     this._registry = {};
+
+    /**
+     * 屏幕切换回调（供外部设置 e.g. BGM 切换）
+     * @type {Function|null} (screenType:string) => void
+     */
+    this.onScreenEnter = null;
   }
 
   /**
@@ -194,8 +200,11 @@ class ScreenRouter {
 
     // 创建并进入新屏幕
     const screen = factory();
+    screen._type = type;
     this._current = screen;
     screen.onEnter(params);
+
+    if (this.onScreenEnter) this.onScreenEnter(type);
 
     console.log('[ScreenRouter] push → ' + type + ' (栈深: ' + (this._history.length + 1) + ')');
   }
@@ -217,6 +226,8 @@ class ScreenRouter {
       const prev = this._history.pop();
       this._current = prev;
       prev.onEnter();
+
+      if (this.onScreenEnter) this.onScreenEnter(prev._type);
 
       console.log('[ScreenRouter] pop ← (栈深: ' + this.getStackDepth() + ')');
       return;
@@ -253,8 +264,11 @@ class ScreenRouter {
 
     // 创建并进入新屏幕
     const screen = factory();
+    screen._type = type;
     this._current = screen;
     screen.onEnter(params);
+
+    if (this.onScreenEnter) this.onScreenEnter(type);
 
     console.log('[ScreenRouter] replace → ' + type);
   }

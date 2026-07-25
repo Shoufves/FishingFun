@@ -18,6 +18,7 @@ import { Renderer } from './render/Renderer.js';
 import { BackgroundLayer } from './render/BackgroundLayer.js';
 import { WaterAnimation } from './render/WaterAnimation.js';
 import { Sprite } from './render/Sprite.js';
+import { AudioManager } from './core/AudioManager.js';
 
 /* ============================================================
    常量 & 状态
@@ -55,6 +56,9 @@ let bgLayer = null;
 
 /** @type {WaterAnimation|null} 水面动画 */
 let waterAnim = null;
+
+/** @type {AudioManager|null} 音频引擎 */
+let audio = null;
 
 /* ============================================================
    Canvas 尺寸自适应
@@ -329,6 +333,19 @@ async function bootGame() {
     // 4b. 创建水面动画
     waterAnim = new WaterAnimation();
 
+    // 4d. 初始化音频引擎（用户点击后才会真正激活）
+    audio = new AudioManager();
+    window._audio = audio;
+
+    // 4e. 从存档恢复音量设置
+    if (saveData && saveData.settings) {
+      audio.restoreState({
+        masterVolume: 1.0,
+        sfxVolume: saveData.settings.sfxVolume || 1.0,
+        bgmVolume: saveData.settings.musicVolume || 0.7,
+      });
+    }
+
     // 4c. 注册像素风格层（背景/水面走 320×180 管线）
     //     UI 层（screen/debug）直接在主 Canvas 上绘制，保证文字清晰
     renderer.addLayer('background', (oc, dt, elapsed) => {
@@ -347,6 +364,18 @@ async function bootGame() {
     router.register(ScreenType.TITLE, () => new TitleScreen(router));
     router.register(ScreenType.MAP_SELECT, () => new MapSelectScreen(router));
     router.register(ScreenType.FISHING, () => new FishingScreen(router));
+
+    // BGM 路由：只在明确需要切换 BGM 的屏幕触发
+    // 标题/地图选择共用 title，钓鱼/其他用各自 BGM
+    router.onScreenEnter = (type) => {
+      if (!audio) return;
+      if (type === ScreenType.FISHING) {
+        audio.playBGM('fishing');
+      } else if (type === ScreenType.TITLE) {
+        audio.playBGM('title');
+      }
+      // MAP_SELECT 等其他屏幕不触发 BGM 切换（沿用当前的）
+    };
 
     // 进入标题画面
     console.log('[GameBoot] 准备进入标题画面...');
@@ -377,13 +406,23 @@ function getCanvasCoords(clientX, clientY) {
   return { x: clientX - rect.left, y: clientY - rect.top };
 }
 
+/** @type {boolean} 是否已激活音频 */
+let _audioResumed = false;
+
 /** 点击/触摸事件分发到当前屏幕（CSS 像素坐标） */
 function handlePointerDown(clientX, clientY) {
+  // 首次点击激活音频（遵循浏览器自动播放策略）
+  if (!_audioResumed) {
+    _audioResumed = true;
+    if (audio) audio.resume();
+  }
+
   if (!router) return;
   const { x, y } = getCanvasCoords(clientX, clientY);
   const screen = router.getCurrentScreen();
   if (screen && typeof screen.handleClick === 'function') {
-    screen.handleClick(x, y);
+    const hit = screen.handleClick(x, y);
+    if (hit && audio) audio.playSFX('click', 0.5);
   }
 }
 
