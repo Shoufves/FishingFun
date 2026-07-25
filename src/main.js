@@ -14,6 +14,10 @@ import {
   ScreenRouter, ScreenType,
   TitleScreen, MapSelectScreen, Screen,
 } from './core/ScreenRouter.js';
+import { Renderer } from './render/Renderer.js';
+import { BackgroundLayer } from './render/BackgroundLayer.js';
+import { WaterAnimation } from './render/WaterAnimation.js';
+import { Sprite } from './render/Sprite.js';
 
 /* ============================================================
    常量 & 状态
@@ -42,6 +46,15 @@ let _gameRunning = false;
 
 /** @type {ScreenRouter|null} 画面路由实例 */
 let router = null;
+
+/** @type {Renderer|null} 渲染管线 */
+let renderer = null;
+
+/** @type {BackgroundLayer|null} 背景层 */
+let bgLayer = null;
+
+/** @type {WaterAnimation|null} 水面动画 */
+let waterAnim = null;
 
 /* ============================================================
    Canvas 尺寸自适应
@@ -74,55 +87,48 @@ function resizeCanvas() {
  * @param {number} timestamp - 当前帧时间戳（ms）
  */
 function gameLoop(timestamp) {
-  // --- 计算 delta time ---
   const dt = lastFrameTime ? timestamp - lastFrameTime : 0;
   lastFrameTime = timestamp;
 
-  // --- 更新 FPS 显示 ---
   frameCount++;
   fpsTimer += dt;
-  if (fpsTimer >= 1000) {
-    fpsDisplay = `${frameCount} FPS`;
-    frameCount = 0;
-    fpsTimer = 0;
-  }
+  if (fpsTimer >= 1000) { fpsDisplay = `${frameCount} FPS`; frameCount = 0; fpsTimer = 0; }
 
-  // --- 清屏 ---
-  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-
-  // --- 委托给当前屏幕 ---
+  // 1. 更新
+  if (waterAnim) waterAnim.update(dt);
   const screen = router ? router.getCurrentScreen() : null;
-  if (screen) {
-    screen.update(dt);
-    screen.render(ctx);
-  }
+  if (screen) screen.update(dt);
 
-  // --- HUD 叠加层（FPS + 调试信息）---
-  drawDebugOverlay();
+  // 2. 像素风格背景（320×180 离屏 → 拉伸至主 Canvas）
+  if (renderer) renderer.renderBackground(dt);
 
-  // --- 请求下一帧 ---
+  // 3. UI 文字直接绘制在主 Canvas 上（原生分辨率，清晰锐利）
+  if (screen) screen.render(ctx);
+
+  // 4. 调试叠加层
+  drawDebugOverlay(ctx);
+
   requestAnimationFrame(gameLoop);
 }
 
 /**
- * 绘制调试叠加层（FPS、路由栈信息等）
+ * 绘制调试叠加层（直接在主 Canvas 上绘制，清晰）
+ * @param {CanvasRenderingContext2D} mc - 主 Canvas 上下文
  */
-function drawDebugOverlay() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+function drawDebugOverlay(mc) {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
 
-  // FPS（右上角）
-  ctx.font = '12px "Courier New", Courier, monospace';
-  ctx.fillStyle = '#f0e6c0';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'top';
-  ctx.fillText(fpsDisplay, width - 12, 12);
+  mc.font = '14px Consolas, "Courier New", monospace';
+  mc.fillStyle = '#f0e6c0';
+  mc.textAlign = 'right';
+  mc.textBaseline = 'top';
+  mc.fillText(fpsDisplay, w - 12, 12);
 
-  // 路由栈深（右上角 FPS 下方）
   if (router) {
-    ctx.font = '10px "Courier New", Courier, monospace';
-    ctx.fillStyle = '#5a7a8a';
-    ctx.fillText('栈深: ' + router.getStackDepth(), width - 12, 28);
+    mc.font = '12px Consolas, "Courier New", monospace';
+    mc.fillStyle = '#5a7a8a';
+    mc.fillText('栈深:' + router.getStackDepth(), w - 12, 30);
   }
 }
 
@@ -215,40 +221,37 @@ class FishingScreen extends Screen {
   render(ctx) {
     const w = window.innerWidth;
     const h = window.innerHeight;
+    const cx = w / 2;
 
-    // 简洁的占位画面
-    ctx.fillStyle = '#0a1a2a';
+    ctx.fillStyle = 'rgba(5, 15, 25, 0.35)';
     ctx.fillRect(0, 0, w, h);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '22px "Courier New", Courier, monospace';
+    ctx.font = '28px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#8ab0c0';
-    ctx.fillText('🎣 钓鱼场景（占位）', w / 2, h / 2 - 20);
+    ctx.fillText('🎣 钓鱼场景（占位）', cx, h / 2 - 20);
 
-    ctx.font = '13px "Courier New", Courier, monospace';
+    ctx.font = '16px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#5a7a8a';
-    ctx.fillText('按 ← 返回选择钓场', w / 2, h / 2 + 20);
+    ctx.fillText('← 返回选择钓场', cx, h / 2 + 20);
 
-    // 返回按钮
-    const backBtnX = 16, backBtnY = 16, backBtnW = 80, backBtnH = 36;
+    const bx = 16, by = 12, bw = 90, bh = 36;
     ctx.fillStyle = '#3a5a6a';
-    ctx.fillRect(backBtnX, backBtnY, backBtnW, backBtnH);
+    ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = '#1a2a3a';
-    ctx.fillRect(backBtnX + 1, backBtnY + 1, backBtnW - 2, backBtnH - 2);
+    ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '14px "Courier New", Courier, monospace';
+    ctx.font = '16px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#a0c4e0';
-    ctx.fillText('← 返回', backBtnX + backBtnW / 2, backBtnY + backBtnH / 2);
+    ctx.fillText('← 返回', bx + bw / 2, by + bh / 2);
   }
 
   /** @override */
   _setupRegions() {
     super._setupRegions();
-    this._addClickRegion(16, 16, 80, 36, () => {
-      this.router.pop();
-    });
+    this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
   }
 }
 
@@ -315,9 +318,30 @@ async function bootGame() {
     // 3. 挂载到全局，供后续模块访问
     window.GameState = saveData;
 
-    // 4. 初始化画面路由
+    // 4. 初始化渲染管线
+    renderer = new Renderer(canvas);
+    window._renderer = renderer;
+
+    // 4a. 创建背景层
+    bgLayer = new BackgroundLayer();
+    window._bgLayer = bgLayer;
+
+    // 4b. 创建水面动画
+    waterAnim = new WaterAnimation();
+
+    // 4c. 注册像素风格层（背景/水面走 320×180 管线）
+    //     UI 层（screen/debug）直接在主 Canvas 上绘制，保证文字清晰
+    renderer.addLayer('background', (oc, dt, elapsed) => {
+      bgLayer.render(oc, dt, elapsed);
+    });
+    renderer.addLayer('water', (oc, dt, elapsed) => {
+      waterAnim.render(oc, 0, 180 - 56, 320, 56);
+    });
+    // 层 3-8: 游戏对象/节奏游戏/UI/模态层（预留，未来可选择性加入）
+
+    // 5. 初始化画面路由
     router = new ScreenRouter(ctx);
-    window._router = router;  // 调试：暴露到全局供 DevTools 检查
+    window._router = router;
 
     // 注册屏幕
     router.register(ScreenType.TITLE, () => new TitleScreen(router));
@@ -353,7 +377,7 @@ function getCanvasCoords(clientX, clientY) {
   return { x: clientX - rect.left, y: clientY - rect.top };
 }
 
-/** 点击/触摸事件分发到当前屏幕 */
+/** 点击/触摸事件分发到当前屏幕（CSS 像素坐标） */
 function handlePointerDown(clientX, clientY) {
   if (!router) return;
   const { x, y } = getCanvasCoords(clientX, clientY);

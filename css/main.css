@@ -19,7 +19,7 @@ body {
   overflow: hidden;
   background-color: #1a2a3a;
   /* 系统等宽字体 fallback（像素风替代） */
-  font-family: 'Courier New', Courier, 'Noto Sans Mono', 'Consolas', monospace;
+  font-family: Consolas, 'Courier New', 'Noto Sans Mono', monospace;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: unset;
 }

@@ -277,7 +277,7 @@ class ScreenRouter {
 }
 
 /* ============================================================
-   TitleScreen（标题画面）
+   TitleScreen（标题画面 — 主 Canvas CSS 坐标）
    ============================================================ */
 
 class TitleScreen extends Screen {
@@ -290,77 +290,53 @@ class TitleScreen extends Screen {
     const h = window.innerHeight;
     const cx = w / 2;
 
-    // --- 背景渐变 ---
-    const gradient = ctx.createLinearGradient(0, 0, 0, h);
-    gradient.addColorStop(0, '#0a1a2a');
-    gradient.addColorStop(0.5, '#1a3a5a');
-    gradient.addColorStop(1, '#0a2a3a');
-    ctx.fillStyle = gradient;
+    // 半透明覆盖
+    ctx.fillStyle = 'rgba(10, 26, 42, 0.2)';
     ctx.fillRect(0, 0, w, h);
 
-    // --- 水面波纹（装饰） ---
-    const time = performance.now() / 1000;
-    ctx.strokeStyle = 'rgba(100, 180, 220, 0.15)';
-    ctx.lineWidth = 1.5;
-    for (let row = 0; row < 5; row++) {
-      ctx.beginPath();
-      const baseY = h * (0.6 + row * 0.08);
-      for (let x = 0; x <= w; x += 6) {
-        const y = baseY + Math.sin(x * 0.025 + time * 1.2 + row * 1.5) * 6
-                      + Math.sin(x * 0.012 + time * 0.6) * 3;
-        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    }
-
-    // --- 标题 ---
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     // 主标题
-    ctx.font = '48px "Courier New", Courier, monospace';
+    ctx.font = 'bold 56px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#f0e6c0';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 12;
     ctx.fillText('🎣 钓趣', cx, h * 0.28);
     ctx.shadowBlur = 0;
 
     // 副标题
-    ctx.font = '18px "Courier New", Courier, monospace';
+    ctx.font = '22px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#8ab0c0';
-    ctx.fillText('Fishing Fun', cx, h * 0.28 + 50);
+    ctx.fillText('Fishing Fun', cx, h * 0.28 + 56);
 
-    // --- 版本/状态 ---
-    ctx.font = '12px "Courier New", Courier, monospace';
+    // 版本
+    ctx.font = '14px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#4a6a7a';
     ctx.fillText('v1.0 | HTML5 Canvas 2D', cx, h * 0.38);
 
-    // --- 开始游戏按钮 ---
-    const btnW = 200;
-    const btnH = 54;
+    // 开始游戏按钮
+    const btnW = 220;
+    const btnH = 56;
     const btnX = cx - btnW / 2;
     const btnY = h * 0.46;
 
-    // 按钮外框（发光效果）
     ctx.shadowColor = 'rgba(100, 200, 240, 0.3)';
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 16;
     ctx.fillStyle = '#2a5a6a';
     ctx.fillRect(btnX, btnY, btnW, btnH);
-
-    // 按钮内框
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#3a7a8a';
     ctx.fillRect(btnX + 2, btnY + 2, btnW - 4, btnH - 4);
 
-    // 按钮文字
-    ctx.font = '20px "Courier New", Courier, monospace';
+    ctx.font = '24px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#f0e6c0';
-    ctx.fillText('开 始 游 戏', cx, btnY + btnH / 2);
+    ctx.fillText('开始游戏', cx, btnY + btnH / 2);
 
-    // --- 底部 footer ---
-    ctx.font = '11px "Courier New", Courier, monospace';
-    ctx.fillStyle = '#3a5a6a';
-    ctx.fillText('点击按钮开始你的钓鱼之旅', cx, h * 0.92);
+    // 底部
+    ctx.font = '12px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#4a6a7a';
+    ctx.fillText('点击按钮开始你的钓鱼之旅', cx, h - 40);
   }
 
   /** @override */
@@ -369,19 +345,15 @@ class TitleScreen extends Screen {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const cx = w / 2;
-
-    // "开始游戏"按钮点击区域
-    const btnW = 200;
-    const btnH = 54;
     this._addClickRegion(
-      cx - btnW / 2, h * 0.46, btnW, btnH,
+      cx - 110, h * 0.46, 220, 56,
       () => { this.router.push(ScreenType.MAP_SELECT); }
     );
   }
 }
 
 /* ============================================================
-   MapSelectScreen（地图选择画面）
+   MapSelectScreen（地图选择 — 主 Canvas CSS 坐标）
    ============================================================ */
 
 /** 硬编码地图列表（占位，后续从 GameData 加载） */
@@ -405,86 +377,69 @@ class MapSelectScreen extends Screen {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const cx = w / 2;
-    const dpr = window.devicePixelRatio || 1;
 
-    // --- 背景 ---
-    const gradient = ctx.createLinearGradient(0, 0, 0, h);
-    gradient.addColorStop(0, '#0d1d2d');
-    gradient.addColorStop(1, '#152a3a');
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = 'rgba(10, 20, 35, 0.3)';
     ctx.fillRect(0, 0, w, h);
 
-    // --- 标题 ---
+    // 标题
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '26px "Courier New", Courier, monospace';
+    ctx.font = '28px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#f0e6c0';
-    ctx.fillText('选 择 钓 场', cx, 48);
+    ctx.fillText('选择钓场', cx, 50);
 
-    // --- 分隔线 ---
+    // 分隔线
     ctx.strokeStyle = '#3a5a6a';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(w * 0.15, 72);
-    ctx.lineTo(w * 0.85, 72);
+    ctx.moveTo(w * 0.1, 76);
+    ctx.lineTo(w * 0.9, 76);
     ctx.stroke();
 
-    // --- 地图列表 ---
-    const listStartY = 100;
-    const itemH = 64;
-    const gap = 8;
-    const listW = Math.min(480, w * 0.8);
+    // 地图列表
+    const listW = Math.min(520, w * 0.75);
+    const itemH = Math.min(56, h / 14);
+    const gap = 6;
+    const listStartY = 96;
 
     PLACEHOLDER_MAPS.forEach((map, index) => {
       const y = listStartY + index * (itemH + gap);
 
-      // 项背景
       ctx.fillStyle = (index % 2 === 0) ? '#1a3a4a' : '#1e3e4e';
       ctx.fillRect(cx - listW / 2, y, listW, itemH);
 
-      // 左侧难度标
       const diffColors = ['#5a9a5a', '#8a9a4a', '#c0a040', '#c07030', '#c04040'];
       ctx.fillStyle = diffColors[map.difficulty - 1] || '#5a5a5a';
       ctx.fillRect(cx - listW / 2, y, 4, itemH);
 
-      // 地图名
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.font = '16px "Courier New", Courier, monospace';
+      ctx.font = '18px Consolas, "Courier New", monospace';
       ctx.fillStyle = '#e0d8c0';
-      ctx.fillText(map.name, cx - listW / 2 + 18, y + itemH / 2 - 8);
+      ctx.fillText(map.name, cx - listW / 2 + 16, y + itemH / 2);
 
-      // 难度描述
-      ctx.font = '11px "Courier New", Courier, monospace';
-      ctx.fillStyle = '#6a8a9a';
-      ctx.fillText(map.desc, cx - listW / 2 + 18, y + itemH / 2 + 12);
-
-      // 难度星级
       ctx.textAlign = 'right';
-      ctx.font = '12px "Courier New", Courier, monospace';
+      ctx.font = '13px Consolas, "Courier New", monospace';
       ctx.fillStyle = '#5a7a8a';
       ctx.fillText('难度 ' + map.difficulty + '/10', cx + listW / 2 - 12, y + itemH / 2);
     });
 
-    // --- 返回按钮（左上角）---
-    const backBtnX = 16;
-    const backBtnY = 16;
-    const backBtnW = 80;
-    const backBtnH = 36;
-
+    // 返回按钮
+    const backW = 90, backH = 36;
+    const bx = 16, by = 12;
     ctx.fillStyle = '#3a5a6a';
-    ctx.fillRect(backBtnX, backBtnY, backBtnW, backBtnH);
+    ctx.fillRect(bx, by, backW, backH);
     ctx.fillStyle = '#1a2a3a';
-    ctx.fillRect(backBtnX + 1, backBtnY + 1, backBtnW - 2, backBtnH - 2);
+    ctx.fillRect(bx + 2, by + 2, backW - 4, backH - 4);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '14px "Courier New", Courier, monospace';
+    ctx.font = '16px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#a0c4e0';
-    ctx.fillText('← 返回', backBtnX + backBtnW / 2, backBtnY + backBtnH / 2);
+    ctx.fillText('← 返回', bx + backW / 2, by + backH / 2);
 
-    // --- 底部提示 ---
+    // 底部提示
     ctx.textAlign = 'center';
-    ctx.font = '11px "Courier New", Courier, monospace';
+    ctx.font = '11px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#3a5a6a';
     ctx.fillText('点击地图进入钓鱼场景（占位）', cx, h - 24);
   }
@@ -496,19 +451,14 @@ class MapSelectScreen extends Screen {
     const h = window.innerHeight;
     const cx = w / 2;
 
-    // --- 返回按钮 ---
-    const backBtnX = 16;
-    const backBtnY = 16;
-    this._addClickRegion(backBtnX, backBtnY, 80, 36, () => {
-      this.router.pop();
-    });
+    // 返回按钮
+    this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
 
-    // --- 地图列表项 ---
-    const listStartY = 100;
-    const itemH = 64;
-    const gap = 8;
-    const listW = Math.min(480, w * 0.8);
-
+    // 地图列表
+    const listW = Math.min(520, w * 0.75);
+    const itemH = Math.min(56, h / 14);
+    const gap = 6;
+    const listStartY = 96;
     PLACEHOLDER_MAPS.forEach((map, index) => {
       const y = listStartY + index * (itemH + gap);
       this._addClickRegion(cx - listW / 2, y, listW, itemH, () => {
