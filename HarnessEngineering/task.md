@@ -166,7 +166,7 @@
 ---
 
 ### T-009: 双耐力条搏鱼小游戏 (Catch Minigame)
-- **状态**: pending
+- **状态**: [x]
 - **前置依赖**: T-008
 - **模块**: Gameplay/CatchMinigame
 - **步骤**:

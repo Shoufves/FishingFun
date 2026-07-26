@@ -3,8 +3,8 @@
 /**
  * ============================================================
  * src/ui/screens/FishingScreen.js — 钓鱼场景画面
- * 版本: 1.3 (T-008: 集成等待咬钩)
- * 职责: 整合适配引擎、等待系统，管理完整钓鱼三段阶段流
+ * 版本: 1.4 (T-009: 集成搏鱼小游戏)
+ * 职责: 管理完整四段阶段流（抛竿→等待→搏鱼→结果）
  * ============================================================
  */
 
@@ -13,32 +13,27 @@ import { CastingSystem } from '../../fishing/CastingSystem.js';
 import { CastingUI } from '../CastingUI.js';
 import { WaitSystem } from '../../fishing/WaitSystem.js';
 import { WaitingUI } from '../WaitingUI.js';
+import { CatchSystem } from '../../fishing/CatchSystem.js';
+import { CatchUI } from '../CatchUI.js';
 
 /* ============================================================
    常量
    ============================================================ */
 
-/** @type {boolean} 调试模式 */
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
-
-/** @type {number} 判定结果反馈显示时长（ms） */
 const RESULT_DISPLAY_TIME = 1500;
-
-/** @type {number} 失败后重置延迟（ms） */
 const FAIL_RESET_DELAY = 2000;
-
-/** @type {number} 超时后显示消息的时长（ms） */
 const TIMEOUT_DISPLAY_TIME = 2000;
+const CATCH_END_DISPLAY_TIME = 2000;
 
-/**
- * 画面阶段枚举
- * @readonly @enum {string}
- */
+/** @readonly @enum {string} */
 const Phase = Object.freeze({
-  READY:   'ready',    // 等待玩家开始抛竿
-  CASTING: 'casting',  // 蓄力条运动中
-  RESULT:  'result',   // 判定结果展示
-  WAITING: 'waiting',  // 等待咬钩（T-008）
+  READY:   'ready',
+  CASTING: 'casting',
+  RESULT:  'result',
+  WAITING: 'waiting',
+  HOOKING: 'hooking',
+  CATCHING: 'catching',
 });
 
 /* ============================================================
@@ -46,46 +41,24 @@ const Phase = Object.freeze({
    ============================================================ */
 
 class FishingScreen extends Screen {
-  /**
-   * @param {import('../../core/ScreenRouter.js').ScreenRouter} router
-   */
   constructor(router) {
     super(router);
-
-    /** @type {CastingSystem|null} */
     this._castingSystem = null;
-
-    /** @type {CastingUI|null} */
     this._castingUI = null;
-
-    /** @type {WaitSystem|null} */
     this._waitSystem = null;
-
-    /** @type {WaitingUI|null} */
     this._waitingUI = null;
-
-    /** @type {string} 当前画面阶段 */
+    this._catchSystem = null;
+    this._catchUI = null;
     this._phase = Phase.READY;
-
-    /** @type {string|null} 当前判定反馈文字 */
     this._statusText = null;
-
-    /** @type {number|null} 状态切换延时器 ID */
     this._statusTimer = null;
-
-    /** @type {Function|null} 绑定的键盘处理器引用 */
     this._keyHandler = null;
-
-    /** @type {Object|null} 传入的参数 */
     this._params = null;
-
-    /** @type {string|null} 抛竿判定等级（传入等待系统） */
     this._lastCastGrade = null;
-  }
 
-  /* ============================================================
-     生命周期
-     ============================================================ */
+    /** @type {{ remaining: number, total: number, fish: Object|null }} 刺鱼计时 */
+    this._hooking = { remaining: 0, total: 2000, fish: null };
+  }
 
   /** @override */
   onEnter(params) {
@@ -97,6 +70,8 @@ class FishingScreen extends Screen {
     this._castingUI = new CastingUI();
     this._waitSystem = null;
     this._waitingUI = null;
+    this._catchSystem = null;
+    this._catchUI = null;
     this._phase = Phase.READY;
     this._statusText = null;
     this._statusTimer = null;
@@ -128,7 +103,6 @@ class FishingScreen extends Screen {
 
   /** @override */
   update(dt) {
-    // CASTING 阶段：更新蓄力条
     if (this._phase === Phase.CASTING && this._castingSystem) {
       this._castingSystem.update(dt);
       if (!this._castingSystem.isActive() && !this._statusText) {
@@ -136,9 +110,22 @@ class FishingScreen extends Screen {
       }
     }
 
-    // WAITING 阶段：更新等待系统
     if (this._phase === Phase.WAITING && this._waitSystem) {
       this._waitSystem.update(dt);
+    }
+
+    if (this._phase === Phase.CATCHING && this._catchSystem) {
+      this._catchSystem.update(dt);
+      if (this._catchSystem.isFinished()) {
+        this._onCatchEnd();
+      }
+    }
+
+    if (this._phase === Phase.HOOKING) {
+      this._hooking.remaining -= dt;
+      if (this._hooking.remaining <= 0) {
+        this._onHookTimeout();
+      }
     }
   }
 
@@ -154,77 +141,93 @@ class FishingScreen extends Screen {
     ctx.fillStyle = 'rgba(5, 15, 25, 0.25)';
     ctx.fillRect(0, 0, w, h);
 
+    if (this._phase === Phase.CATCHING) {
+      this._renderCatching(ctx, w, h);
+      return;
+    }
+
+    if (this._phase === Phase.HOOKING) {
+      this._renderHooking(ctx, w, h);
+      return;
+    }
+
     this._drawBackButton(ctx);
 
-    // READY / CASTING / RESULT 阶段：蓄力条
-    if (this._phase === Phase.READY ||
-        this._phase === Phase.CASTING ||
+    if (this._phase === Phase.READY || this._phase === Phase.CASTING ||
         this._phase === Phase.RESULT) {
       this._renderCasting(ctx, w, h);
       return;
     }
 
-    // WAITING 阶段：浮漂
     if (this._phase === Phase.WAITING) {
       this._renderWaiting(ctx, w, h);
     }
   }
 
-  /**
-   * 渲染蓄力条相关
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {number} w
-   * @param {number} h
-   */
+  /** @private */
   _renderCasting(ctx, w, h) {
     if (!this._castingSystem || !this._castingUI) return;
-
     const barW = Math.min(320, w * 0.65);
     const barH = 28;
     const barX = (w - barW) / 2;
     const barY = h * 0.6;
 
     if (this._phase === Phase.READY) {
-      this._castingUI.render(ctx, barX, barY, barW, barH,
-        this._castingSystem, '', true);
+      this._castingUI.render(ctx, barX, barY, barW, barH, this._castingSystem, '', true);
       this._drawCenteredText(ctx, 'Press SPACE / Click to cast',
-        w / 2, barY + barH + 28, 'bold 18px Consolas, "Courier New", monospace', '#8ab0c0');
+        w / 2, barY + barH + 28, 'bold 18px Consolas,"Courier New",monospace', '#8ab0c0');
       return;
     }
 
-    this._castingUI.render(ctx, barX, barY, barW, barH,
-      this._castingSystem, this._statusText);
-
+    this._castingUI.render(ctx, barX, barY, barW, barH, this._castingSystem, this._statusText);
     if (this._phase === Phase.CASTING) {
       this._drawCenteredText(ctx, 'Press SPACE / Click to cast',
-        w / 2, barY + barH + 28, '13px Consolas, "Courier New", monospace', '#4a6a7a');
+        w / 2, barY + barH + 28, '13px Consolas,"Courier New",monospace', '#4a6a7a');
     }
   }
 
-  /**
-   * 渲染等待浮漂
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {number} w
-   * @param {number} h
-   */
+  /** @private */
   _renderWaiting(ctx, w, h) {
     if (!this._waitSystem || !this._waitingUI) return;
-
     const floaterState = this._waitSystem.getFloaterState();
-    const cx = w / 2;
-    const cy = h * 0.4;
+    this._waitingUI.render(ctx, w / 2, h * 0.4, floaterState, this._statusText);
+  }
 
-    this._waitingUI.render(ctx, cx, cy, floaterState, this._statusText);
+  /** @private */
+  _renderCatching(ctx, w, h) {
+    if (!this._catchSystem || !this._catchUI) return;
+    const state = this._catchSystem.getState();
 
-    // 鱼名提示
-    const fish = this._waitSystem.getSelectedFish();
-    if (fish && this._phase === Phase.WAITING && floaterState.state !== 'sinking') {
+    // 绘制结果文字覆盖
+    if (this._statusText && state.isFinished) {
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.font = '11px Consolas, "Courier New", monospace';
-      ctx.fillStyle = '#3a5a6a';
-      ctx.fillText('???', cx, cy - 60);
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 32px Consolas,"Courier New",monospace';
+      ctx.fillStyle = this._statusText === 'Caught!' ? '#40d080' : '#e06050';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 10;
+      ctx.fillText(this._statusText, w / 2, h / 2);
+
+      ctx.font = '18px Consolas,"Courier New",monospace';
+      ctx.fillStyle = '#8ab0c0';
+      const fish = this._catchSystem.getFish();
+      if (fish) {
+        ctx.fillText(fish.fishName + ' (' + Math.floor(state.fishStamina.max) + 'HP)',
+          w / 2, h / 2 + 40);
+      }
+      ctx.shadowBlur = 0;
+      return;
     }
+
+    // 正常渲染搏鱼界面
+    this._catchUI.render(ctx, w, h, state);
+
+    // 提示
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '12px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#3a5a6a';
+    ctx.fillText('Press SPACE when note hits the green zone', w / 2, h - 20);
   }
 
   /* ============================================================
@@ -248,12 +251,6 @@ class FishingScreen extends Screen {
      阶段流转
      ============================================================ */
 
-  /**
-   * 处理空格/点击：不同阶段行为不同
-   * - READY → 开始抛竿
-   * - CASTING → 停止抛竿并判定
-   * - RESULT/WAITING → 无操作
-   */
   _handleSpace() {
     if (this._phase === Phase.READY) {
       this._startCasting();
@@ -263,9 +260,20 @@ class FishingScreen extends Screen {
       this._stopCasting();
       return;
     }
+    if (this._phase === Phase.CATCHING && this._catchSystem && !this._catchSystem.isFinished()) {
+      const result = this._catchSystem.handleInput();
+      if (result) {
+        const soundMap = { perfect: 'perfect', great: 'click', good: 'click', miss: 'miss' };
+        const sound = soundMap[result.grade] || 'click';
+        this._playSound(sound);
+      }
+      return;
+    }
+    if (this._phase === Phase.HOOKING) {
+      this._startCatchAfterHook();
+    }
   }
 
-  /** 开始抛竿 */
   _startCasting() {
     if (!this._castingSystem) return;
     this._phase = Phase.CASTING;
@@ -275,17 +283,12 @@ class FishingScreen extends Screen {
     if (DEBUG) console.log('[Fishing] 开始抛竿');
   }
 
-  /** 停止抛竿并判定 */
   _stopCasting() {
     if (!this._castingSystem || !this._castingSystem.isActive()) return;
     const result = this._castingSystem.stop();
     this._onCastingResult(result);
   }
 
-  /**
-   * 处理抛竿判定结果
-   * @param {{ grade: string, progress: number }} result
-   */
   _onCastingResult(result) {
     this._phase = Phase.RESULT;
     this._lastCastGrade = result.grade;
@@ -318,11 +321,6 @@ class FishingScreen extends Screen {
       ' — ' + this._statusText);
   }
 
-  /**
-   * 安排下一个阶段
-   * @param {number} delay - 延迟（ms）
-   * @param {boolean} enterWaiting - true=进入等待, false=回到就绪
-   */
   _scheduleNext(delay, enterWaiting) {
     this._statusTimer = setTimeout(() => {
       if (enterWaiting) {
@@ -333,56 +331,139 @@ class FishingScreen extends Screen {
     }, delay);
   }
 
-  /** 进入等待咬钩阶段 */
   _startWaiting() {
     const mapId = (this._params && this._params.mapId) ? this._params.mapId : 1;
-    const baitId = 1; // 占位，后续 T-012 接入真实装备系统
+    const baitId = 1;
 
     this._waitSystem = new WaitSystem();
     this._waitingUI = new WaitingUI();
     this._statusText = null;
 
-    // 注册回调
-    this._waitSystem.onBite((fish) => {
-      this._onFishBite(fish);
-    });
-    this._waitSystem.onTimeout(() => {
-      this._onWaitTimeout();
-    });
-
+    this._waitSystem.onBite((fish) => { this._onFishBite(fish); });
+    this._waitSystem.onTimeout(() => { this._onWaitTimeout(); });
     this._waitSystem.start(mapId, baitId, this._lastCastGrade);
     this._phase = Phase.WAITING;
 
     if (DEBUG) console.log('[Fishing] 进入等待阶段');
   }
 
-  /**
-   * 鱼咬钩回调
-   * @param {Object} fish
-   */
   _onFishBite(fish) {
-    this._statusText = 'Bite!';
     this._playSound('bite');
-    console.log('[Fishing] 鱼咬钩！ fish=' + (fish ? fish.fishName : '?') +
-      ' (T-009 Catch 阶段待实现)');
+    this._phase = Phase.HOOKING;
+    this._statusText = 'Hit!';
 
-    // T-009 将在此处切换至搏鱼阶段
-    // 当前：展示咬钩文字 2 秒后回到就绪
-    this._statusTimer = setTimeout(() => {
-      this._resetToReady();
-    }, TIMEOUT_DISPLAY_TIME);
+    const hookTime = Math.max(1000, 2000 - (fish.rarity || 1) * 50);
+    this._hooking = { remaining: hookTime, total: hookTime, fish };
+
+    console.log('[Fishing] 鱼咬钩！ fish=' + fish.fishName +
+      ' 刺鱼窗口 ' + hookTime + 'ms');
   }
 
-  /** 等待超时回调 */
+  _renderHooking(ctx, w, h) {
+    // 屏幕边缘红色闪烁（剩余≤1s时）
+    if (this._hooking.remaining <= 1000 && Math.floor(Date.now() / 250) % 2 === 0) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(220, 40, 40, 0.25)';
+      ctx.fillRect(0, 0, w, 6);
+      ctx.fillRect(0, h - 6, w, 6);
+      ctx.fillRect(0, 0, 6, h);
+      ctx.fillRect(w - 6, 0, 6, h);
+      ctx.restore();
+    }
+
+    // 浮漂保持等待时的位置（覆盖 sinking 下沉偏移）
+    if (this._waitSystem && this._waitingUI) {
+      const raw = this._waitSystem.getFloaterState();
+      const floaterState = { ...raw, state: 'idle', progress: 0, offset: 0 };
+      this._waitingUI.render(ctx, w / 2, h * 0.4, floaterState, '',
+        'rgba(200, 40, 40, 0.25)');
+
+      // 抖动的 Hit! 在浮漂正下方（与原 Waiting... 同位置）
+      ctx.save();
+      const sx = (Math.random() - 0.5) * 4;
+      ctx.translate(sx, 0);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = 'bold 20px Consolas,"Courier New",monospace';
+      ctx.fillStyle = '#e04040';
+      ctx.shadowColor = 'rgba(200, 40, 40, 0.6)';
+      ctx.shadowBlur = 10;
+      ctx.fillText('Hit!', w / 2, h * 0.4 + 32);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // 刺鱼进度条
+    const barW = Math.min(260, w * 0.45);
+    const barH = 14;
+    const barX = (w - barW) / 2;
+    const barY = h * 0.68;
+    const pct = Math.max(0, this._hooking.remaining / this._hooking.total);
+
+    ctx.fillStyle = '#1a2a3a';
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.fillStyle = pct > 0.3 ? '#c06030' : '#e04040';
+    ctx.fillRect(barX + 2, barY + 2, (barW - 4) * pct, barH - 4);
+    ctx.strokeStyle = '#3a5a6a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barW, barH);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = 'bold 14px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#f0e6c0';
+    ctx.fillText(Math.floor(pct * 100) + '%', w / 2, barY - 4);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '15px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#6a8a9a';
+    ctx.fillText('Press SPACE!', w / 2, barY + barH + 10);
+  }
+
+  _startCatchAfterHook() {
+    if (this._hooking.remaining <= 0) return;
+    this._phase = Phase.CATCHING;
+    this._statusText = null;
+
+    this._catchSystem = new CatchSystem();
+    this._catchUI = new CatchUI();
+    this._catchSystem.start(this._hooking.fish);
+
+    console.log('[Fishing] 刺鱼成功，进入搏鱼阶段 HP=' +
+      this._catchSystem.getState().fishStamina.max);
+  }
+
+  _onHookTimeout() {
+    this._statusText = 'Fish Gone!';
+    this._playSound('miss');
+    console.log('[Fishing] 刺鱼超时，鱼跑了');
+    this._statusTimer = setTimeout(() => { this._resetToReady(); }, TIMEOUT_DISPLAY_TIME);
+  }
+
   _onWaitTimeout() {
     this._statusText = 'Fish Gone!';
-    console.log('[Fishing] 等待超时，鱼跑了');
-    this._statusTimer = setTimeout(() => {
-      this._resetToReady();
-    }, TIMEOUT_DISPLAY_TIME);
+    this._statusTimer = setTimeout(() => { this._resetToReady(); }, TIMEOUT_DISPLAY_TIME);
   }
 
-  /** 重置到就绪阶段 */
+  _onCatchEnd() {
+    if (!this._catchSystem) return;
+    const result = this._catchSystem.getResult();
+    this._phase = Phase.RESULT;
+
+    if (result === 'win') {
+      this._statusText = 'Caught!';
+      this._playSound('perfect');
+      console.log('[Catch] 成功钓获！');
+    } else {
+      this._statusText = 'Lost!';
+      this._playSound('miss');
+      console.log('[Catch] 鱼逃脱！');
+    }
+
+    this._statusTimer = setTimeout(() => { this._resetToReady(); }, CATCH_END_DISPLAY_TIME);
+  }
+
   _resetToReady() {
     if (this._statusTimer) {
       clearTimeout(this._statusTimer);
@@ -392,19 +473,18 @@ class FishingScreen extends Screen {
     this._statusText = null;
     this._waitSystem = null;
     this._waitingUI = null;
+    this._catchSystem = null;
+    this._catchUI = null;
+    this._hooking = { remaining: 0, total: 2000, fish: null };
     this._castingSystem = new CastingSystem();
     this._lastCastGrade = null;
     if (DEBUG) console.log('[Fishing] 回到就绪阶段');
   }
 
   /* ============================================================
-     通用 UI 工具
+     通用工具
      ============================================================ */
 
-  /**
-   * 绘制返回按钮
-   * @param {CanvasRenderingContext2D} ctx
-   */
   _drawBackButton(ctx) {
     const bx = 16, by = 12, bw = 90, bh = 36;
     ctx.fillStyle = '#3a5a6a';
@@ -413,44 +493,29 @@ class FishingScreen extends Screen {
     ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '16px Consolas, "Courier New", monospace';
+    ctx.font = '16px Consolas,"Courier New",monospace';
     ctx.fillStyle = '#a0c4e0';
     ctx.fillText('\u2190 Back', bx + bw / 2, by + bh / 2);
   }
 
-  /**
-   * 绘制居中文字
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {string} text
-   * @param {number} x
-   * @param {number} y
-   * @param {string} font
-   * @param {string} color
-   */
   _drawCenteredText(ctx, text, x, y, font, color) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = font;
     ctx.fillStyle = color;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
     ctx.shadowBlur = 4;
     ctx.fillText(text, x, y);
     ctx.shadowBlur = 0;
   }
 
-  /**
-   * 播放音效（安全调用）
-   * @param {string} type
-   */
   _playSound(type) {
     try {
       const audio = window._audio;
       if (audio && typeof audio.playSFX === 'function') {
         audio.playSFX(type, 0.5);
       }
-    } catch (e) {
-      // 静默降级
-    }
+    } catch (e) { /* 静默降级 */ }
   }
 }
 

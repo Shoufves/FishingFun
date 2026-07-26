@@ -18,7 +18,7 @@ class WaitingUI {
    * @param {Object} floaterState - 来自 WaitSystem.getFloaterState()
    * @param {string} [statusOverride] - 覆盖状态文字
    */
-  render(ctx, cx, cy, floaterState, statusOverride) {
+  render(ctx, cx, cy, floaterState, statusOverride, rippleColor) {
     const { state, phase, offset, progress } = floaterState;
     const baseY = cy;
 
@@ -39,7 +39,7 @@ class WaitingUI {
     const r = 8;
 
     // ---- 水波纹（浮漂下方） ----
-    ctx.strokeStyle = 'rgba(160, 200, 230, 0.25)';
+    ctx.strokeStyle = rippleColor || 'rgba(160, 200, 230, 0.25)';
     ctx.lineWidth = 1;
     for (let i = 0; i < 3; i++) {
       const wavePhase = phase + i * 1.2;
