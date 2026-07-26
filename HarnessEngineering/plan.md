@@ -86,7 +86,7 @@ class DataLoader {
 ```
 
 **涉及的 CSV 文件：**
-- `table/FishTable.csv` — 308 种鱼的定义（ID、名称、稀有度、基础价格、体型参数 a/b、活动时间等）
+- `table/FishTable.csv` — 305 种鱼的定义（ID、名称、稀有度、基础价格、体型参数 a/b、活动时间等）
 - `table/BaitTable.csv` — 35 种饵料定义（ID、名称、效果倍率、价格、适用水域）
 - `table/MapDefinition.csv` — 15 张地图定义（ID、名称、解锁条件、基础鱼类倍率）
 - `table/MapFishSpawn.csv` — 809 条生成条目（地图ID、鱼ID、权重、最低/最高等级、时间窗口）
@@ -571,7 +571,7 @@ function selectFish(spawnEntries, playerLevel, baitModifiers, timeOfDay):
 
 ### Phase 4 — 内容填充（Content）
 
-**目标：** 接入全部 308 种鱼、35 种饵料、15 张地图和 809 条生成条目。
+**目标：** 接入全部 305 种鱼、35 种饵料、15 张地图和 809 条生成条目。
 
 | 编号 | 任务 | 产出 |
 |------|------|------|

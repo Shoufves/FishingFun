@@ -17,6 +17,7 @@ import { WaterAnimation } from './render/WaterAnimation.js';
 import { Sprite } from './render/Sprite.js';
 import { AudioManager } from './core/AudioManager.js';
 import { FishingScreen } from './ui/screens/FishingScreen.js';
+import { ResultScreen } from './ui/screens/ResultScreen.js';
 
 /* ============================================================
    常量 & 状态
@@ -311,6 +312,7 @@ async function bootGame() {
     router.register(ScreenType.TITLE, () => new TitleScreen(router));
     router.register(ScreenType.MAP_SELECT, () => new MapSelectScreen(router));
     router.register(ScreenType.FISHING, () => new FishingScreen(router));
+    router.register(ScreenType.RESULT, () => new ResultScreen(router));
 
     // BGM 路由：只在明确需要切换 BGM 的屏幕触发
     // 标题/地图选择共用 title，钓鱼/其他用各自 BGM

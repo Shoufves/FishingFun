@@ -24,7 +24,7 @@
 
 | # | 测试用例 | 期望结果 | 优先级 |
 |---|---|---|---|
-| U-001 | 加载 FishTable.csv → 正确解析 308 行数据，无解析错误 | rows.length === 308 | P0 |
+| U-001 | 加载 FishTable.csv → 正确解析 305 行数据，无解析错误 | rows.length === 305 | P0 |
 | U-002 | 加载 BaitTable.csv → 35 种饵料全部加载，BaitId 不重复 | 无重复 ID | P0 |
 | U-003 | 加载 MapDefinition.csv → 15 张地图全部加载 | maps.length === 15 | P0 |
 | U-004 | 加载 MapFishSpawn.csv → 809 行关联数据完整 | rows.length === 809 | P0 |
@@ -127,7 +127,7 @@
 | I-001 | 完整钓鱼流程：选择地图 → 抛竿 → 等待 → 收线 → 结算 → 返回 | 流程无中断 | P0 |
 | I-002 | 钓到鱼 → 金币增加 × 图鉴解锁 ✓ | gold + collection updated | P0 |
 | I-003 | 成功/失败均消耗 1 鱼线 + 1 饵料 | inventory decremented | P0 |
-| I-004 | 图鉴完成度随钓获新鱼种增加 | X/308 正确更新 | P1 |
+| I-004 | 图鉴完成度随钓获新鱼种增加 | X/305 正确更新 | P1 |
 | I-005 | 商店购买 → 金币减少 → 物品进入背包 | gold, inventory correct | P1 |
 | I-006 | 装备更换 → 下一竿钓鱼参数变化 | catch bar changes | P1 |
 | I-007 | 等级提升 → 新地图解锁 → 可进入 | map select shows new map | P1 |

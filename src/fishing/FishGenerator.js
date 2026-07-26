@@ -63,6 +63,7 @@ class FishGenerator {
     const weight = this._calculateWeight(fishDef, length);
     const quality = this._determineQuality(fishDef, length);
 
+    const avgLength = (fishDef.minLengthCm + fishDef.maxLengthCm) / 2;
     const instance = {
       fishId: fishDef.fishId,
       name: fishDef.fishName,
@@ -71,6 +72,9 @@ class FishGenerator {
       family: fishDef.family || '',
       length: Math.round(length * 100) / 100,
       weight: Math.round(weight * 1000) / 1000,
+      avgLength: Math.round(avgLength * 100) / 100,
+      minLengthCm: fishDef.minLengthCm,
+      maxLengthCm: fishDef.maxLengthCm,
       quality,
       mutationLevel,
       rarity: fishDef.rarity || 1,

@@ -146,7 +146,7 @@ fish/
 
 | 文件 | 行数 | 性质 |
 |------|------|------|
-| `table/FishTable.csv` | 308 条鱼 | ★ 只读（游戏数据源） |
+| `table/FishTable.csv` | 305 条鱼 | ★ 只读（游戏数据源） |
 | `table/BaitTable.csv` | 35 种饵料 | ★ 只读（游戏数据源） |
 | `table/MapDefinition.csv` | 15 张地图 | ★ 只读（游戏数据源） |
 | `table/MapFishSpawn.csv` | 809 条生成记录 | ★ 只读（游戏数据源） |

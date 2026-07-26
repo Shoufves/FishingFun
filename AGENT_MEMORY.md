@@ -17,8 +17,51 @@
 | 2026-07-26 | T-008: 等待状态与鱼选择 | 已完成，等待计时与浮漂动画自检通过 | 无特殊阻塞 |
 | 2026-07-26 | T-009: 双耐力条搏鱼小游戏 | 已完成，判定逻辑与 UI 自检通过 | 无特殊阻塞 |
 | 2026-07-26 | T-010: 鱼生成算法 | 已完成，分布与变异逻辑自检通过 | 无特殊阻塞 |
+| 2026-07-26 | T-011: 结果画面 | 已完成，结算 UI 与纪录检查自检通过 | 无特殊阻塞 |
+| 2026-07-26 | 数据表内容修正 | 完成，见下方详细记录 | 用户授权后修改4份CSV |
 
 ---
+
+## 2026-07-26 数据表内容修正记录
+
+### 修改范围
+- `table/FishTable.csv` — 308→305 条鱼（合并3组重复物种）
+- `table/BaitTable.csv` — 35 行（修正耐久度 + 填充 TargetCategory）
+- `table/MapFishSpawn.csv` — 809 行（填充 BestTime/BestSeason/BestWeather、SpawnWeight ÷10、FishId替换、鱼种迁移）
+- `table/MapDefinition.csv` — 未修改
+
+### 详细变更
+
+#### FishTable
+- **合并 3 组同物异名**：河鲈+赤鲈(48+78)、美洲红点鲑+溪鳟(56+201)、六线鱼+大泷六线鱼(114+115)
+- **修正 7 条 MinWeight**：鲤鱼 0.25→0.15、蓝鳍金枪鱼 8.0→4.5、翻车鱼 10.0→3.0、中华鲟 5.0→2.5、锤头双髻鲨 20.0→10.0、锦鲤 0.10→0.05、金鱼 0.005→0.002
+
+#### BaitTable
+- **耐久度修正**：蛆虫 12→6、面团 15→3、面包 10→1、豆腐 8→2、米饭 15→3
+- **TargetCategory 填充**：11 行空值按生态位补充（小鱼苗→淡水鱼;海水鱼，其余淡水饵→淡水鱼）
+
+#### MapFishSpawn
+- **BestTime/BestSeason/BestWeather 全量填充**：809 行×3 列，基于 FishTable.ActiveTime + Description 关键字逐鱼推理
+  - BestTime 值：0-24 / 6-18 / 18-6 / 5-7;17-19 / 16-19
+  - BestSeason 值：Spring;Summer;Autumn（761 条目，默认）/ Spring;Summer;Autumn;Winter（34 条目，冰钓/耐寒种）/ Spring;Summer（11 条目，北极种）/ Spring;Autumn;Winter（3 条目，夏眠种）
+  - BestWeather 值：Sunny;Cloudy;Rainy / Sunny;Cloudy（表层白天种）/ Cloudy;Rainy
+- **SpawnWeight 归一化**：全表 ÷10，范围 548~20100 → 55~2010，概率分布不变
+- **FishId 替换**：12 行（78→48×5、201→56×3、115→114×4）
+- **鱼种迁移**：牙鲆(122)、大菱鲆(123) 从 Map12(深海) → Map9(近海岩礁)
+
+### 关联文档数字同步
+- `AGENTS.md` 3.1: 308→305 条鱼
+- `spec.md` 1.3: 308→305 种鱼, 行数 309→306
+- `spec.md` 6.1: X/308→X/305
+- `test_checklist.md` U-001: 308→305 行
+- `test_checklist.md` I-004: X/308→X/305
+- `plan.md` 2.1: 308→305 种鱼的定义
+- `plan.md` Phase 4: 308→305 种鱼
+
+### 风险评估
+- **无代码影响**：代码中无逻辑读取 BestTime/BestSeason/BestWeather（WaitSystem._checkBite 的 timeMod=1.0 仍为占位），CSVLoader 兼容
+- **正向准备**：BestTime/Season/Weather 数据为未来 MapManager 时间过滤功能提供了基础
+- **小心**：未来 T-021 平衡性调整时需注意 SpawnWeight 已是÷10 后的值
 
 ## 项目经验教训（历史问题与修复）
 
@@ -94,6 +137,14 @@
   - 鱼在搏鱼过程中有挣扎动画（左右摇摆、突然冲刺画面拉扯）
   - 稀有度体现为鱼图标特效（发光、色彩、大小）
 - **优先级**：低（需等 T-010 FishGenerator 完成）
+
+### T-011.1: 结算画面增强
+- **背景**：当前结算画面缺少"捕获时间"和"捕获地点"两个信息项
+- **建议方案**：
+  - 捕获时间：在结算时记录 `Date.now()` 并格式化显示
+  - 捕获地点：从 `params.mapId` 映射 MapDefinition 中的地图名称
+  - 在信息面板中加入时间行和地点行
+- **优先级**：低（不影响核心功能，视觉增强）
 
 ---
 

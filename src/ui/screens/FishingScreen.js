@@ -459,9 +459,13 @@ class FishingScreen extends Screen {
     this._phase = Phase.RESULT;
 
     if (result === 'win') {
-      this._statusText = 'Caught!';
+      const fi = this._catchSystem.getFish();
+      this._statusTimer = setTimeout(() => {
+        this.router.push('RESULT', { fish: fi });
+      }, 500);
       this._playSound('perfect');
       console.log('[Catch] 成功钓获！');
+      return;
     } else {
       this._statusText = 'Lost!';
       this._playSound('miss');
