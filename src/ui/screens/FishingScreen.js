@@ -61,6 +61,9 @@ class FishingScreen extends Screen {
     this._equipment = (window._equipmentManager
       ? window._equipmentManager.getTotalStats() : getDefaultEquipment());
 
+    /** @type {number} 当前饵料 ID */
+    this._currentBaitId = (window._baitSystem && window._baitSystem.getEquippedBait()) || 1;
+
     this._hooking = { remaining: 0, total: 2000, fish: null };
   }
 
@@ -85,6 +88,19 @@ class FishingScreen extends Screen {
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
         this._handleSpace();
+        return;
+      }
+      // 数字键 1-9 切换饵料（按 BaitTable ID）
+      const n = parseInt(e.key, 10);
+      if (n >= 1 && n <= 9 && this._phase === Phase.READY) {
+        if (!this._switchBait(n)) {
+          this._statusText = 'Bait #' + n + ' not available';
+        }
+      }
+      // B 键循环切换饵料
+      if ((e.key === 'b' || e.key === 'B') && this._phase === Phase.READY) {
+        if (window._baitSystem) window._baitSystem.cycleBait();
+        this._refreshBaitId();
       }
     };
     this._addListener(document, 'keydown', this._keyHandler);
@@ -178,8 +194,10 @@ class FishingScreen extends Screen {
 
     if (this._phase === Phase.READY) {
       this._castingUI.render(ctx, barX, barY, barW, barH, this._castingSystem, '', true);
+      // 饵料信息
+      this._drawBaitInfo(ctx, barX, barY + barH + 4, barW);
       this._drawCenteredText(ctx, 'Press SPACE / Click to cast',
-        w / 2, barY + barH + 28, 'bold 18px Consolas,"Courier New",monospace', '#8ab0c0');
+        w / 2, barY + barH + 56, 'bold 18px Consolas,"Courier New",monospace', '#8ab0c0');
       return;
     }
 
@@ -283,8 +301,20 @@ class FishingScreen extends Screen {
     this._phase = Phase.CASTING;
     this._statusText = null;
     this._castingSystem.start(this._equipment);
+
+    // 消耗饵料
+    if (window._baitSystem) {
+      const hadBait = window._baitSystem.getEquippedBait() !== null;
+      window._baitSystem.consumeBait();
+      this._refreshBaitId();
+      if (!hadBait) {
+        this._statusText = 'No bait - basic attraction';
+        if (DEBUG) console.log('[Fishing] 无饵料，使用基础吸引力');
+      }
+    }
+
     this._playSound('cast');
-    if (DEBUG) console.log('[Fishing] 开始抛竿');
+    if (DEBUG) console.log('[Fishing] 开始抛竿，饵料ID=' + this._currentBaitId);
   }
 
   _stopCasting() {
@@ -337,7 +367,7 @@ class FishingScreen extends Screen {
 
   _startWaiting() {
     const mapId = (this._params && this._params.mapId) ? this._params.mapId : 1;
-    const baitId = 1;
+    const baitId = this._currentBaitId || 1;
 
     this._waitSystem = new WaitSystem();
     this._waitingUI = new WaitingUI();
@@ -493,6 +523,51 @@ class FishingScreen extends Screen {
     this._castingSystem = new CastingSystem();
     this._lastCastGrade = null;
     if (DEBUG) console.log('[Fishing] 回到就绪阶段');
+  }
+
+  /* ============================================================
+     饵料管理
+     ============================================================ */
+
+  /**
+   * 绘制饵料状态
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   */
+  _drawBaitInfo(ctx, x, y, w) {
+    const bs = window._baitSystem;
+    if (!bs) return;
+    const label = bs.getEquippedLabel();
+    const attr = bs.getCurrentAttractiveness();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '12px Consolas,"Courier New",monospace';
+    ctx.fillStyle = bs.getEquippedBait() ? '#6a8a9a' : '#8a5650';
+    ctx.fillText('\u9975\u6599: ' + label + (attr > 0 ? ' (ATTR:' + attr + ')' : ''), x + w / 2, y);
+    ctx.font = '10px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#3a5a6a';
+    ctx.fillText('[1-9] switch  [B] cycle', x + w / 2, y + 16);
+  }
+
+  /** 从全局 BaitSystem 同步当前饵料 ID */
+  _refreshBaitId() {
+    if (window._baitSystem) {
+      this._currentBaitId = window._baitSystem.getEquippedBait() || 0;
+    }
+  }
+
+  /**
+   * 按数字键直接切换饵料
+   * @param {number} baitId
+   */
+  _switchBait(baitId) {
+    const bs = window._baitSystem;
+    if (!bs || bs.getBaitCount(baitId) <= 0) return false;
+    bs.equipBait(baitId);
+    this._refreshBaitId();
+    return true;
   }
 
   /* ============================================================

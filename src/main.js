@@ -20,6 +20,7 @@ import { FishingScreen } from './ui/screens/FishingScreen.js';
 import { ResultScreen } from './ui/screens/ResultScreen.js';
 import { EquipmentManager } from './systems/EquipmentManager.js';
 import { EQUIPMENT_LIBRARY } from './data/EquipmentData.js';
+import { BaitSystem } from './systems/BaitSystem.js';
 
 /* ============================================================
    常量 & 状态
@@ -301,6 +302,25 @@ async function bootGame() {
       console.log('[GameBoot] 已发放初始装备并自动装备');
       console.log('[GameBoot] 装备状态:', JSON.stringify(equipMgr.getEquipped()));
     }
+    }
+
+    // 3b. 初始化饵料系统
+    const baitMgr = new BaitSystem();
+    window._baitSystem = baitMgr;
+    if (saveData.bait && saveData.bait.inventory) {
+      baitMgr.restoreState(saveData.bait.inventory, saveData.bait.equipped);
+    } else if (saveData.inventory && saveData.inventory.baits && saveData.inventory.baits.length > 0) {
+      // 兼容旧存档
+      const oldInv = {};
+      for (const id of saveData.inventory.baits) {
+        oldInv[id] = (oldInv[id] || 0) + 1;
+      }
+      baitMgr.restoreState(oldInv, null);
+    } else {
+      // 首次启动：红蚯蚓 ×10
+      baitMgr.addBait(1, 10);
+      baitMgr.equipBait(1);
+      if (DEBUG) console.log('[GameBoot] 已发放初始饵料 红蚯蚓 x10');
     }
 
     // 4. 初始化渲染管线
