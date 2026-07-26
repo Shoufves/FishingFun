@@ -319,12 +319,18 @@ class WaitSystem {
       return {
         fishId: fish.fishId,
         fishName: fish.fishName,
-        rarity: fish.rarity,
+        scientificName: fish.scientificName || '',
         category: fish.category,
+        family: fish.family || '',
+        rarity: fish.rarity,
+        minLengthCm: fish.minLengthCm,
+        maxLengthCm: fish.maxLengthCm,
+        minWeightKg: fish.minWeightKg,
+        maxWeightKg: fish.maxWeightKg,
         habitatLayer: fish.habitatLayer,
         activeTime: fish.activeTime,
         fightPower: fish.fightPower,
-        basePrice: fish.basePriceGold,
+        basePriceGold: fish.basePriceGold,
         expReward: fish.expReward,
       };
     } catch (e) {
@@ -347,12 +353,18 @@ class WaitSystem {
     return {
       fishId: idx + 1,
       fishName: names[idx],
-      rarity: rarities[idx],
+      scientificName: '',
       category: '淡水鱼',
+      family: '鲤科',
+      rarity: rarities[idx],
+      minLengthCm: 10,
+      maxLengthCm: 60,
+      minWeightKg: 0.05,
+      maxWeightKg: 3.0,
       habitatLayer: '底层',
       activeTime: '全天',
       fightPower: Math.floor(rarities[idx] * 2),
-      basePrice: 20,
+      basePriceGold: 20,
       expReward: 15,
     };
   }

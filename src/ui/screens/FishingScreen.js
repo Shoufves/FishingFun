@@ -15,6 +15,7 @@ import { WaitSystem } from '../../fishing/WaitSystem.js';
 import { WaitingUI } from '../WaitingUI.js';
 import { CatchSystem } from '../../fishing/CatchSystem.js';
 import { CatchUI } from '../CatchUI.js';
+import { FishGenerator } from '../../fishing/FishGenerator.js';
 
 /* ============================================================
    常量
@@ -426,12 +427,18 @@ class FishingScreen extends Screen {
     this._phase = Phase.CATCHING;
     this._statusText = null;
 
+    // 通过 FishGenerator 生成完整鱼实例
+    const generator = new FishGenerator();
+    const fishInstance = generator.generate(this._hooking.fish);
+
     this._catchSystem = new CatchSystem();
     this._catchUI = new CatchUI();
-    this._catchSystem.start(this._hooking.fish);
+    this._catchSystem.start(fishInstance);
 
-    console.log('[Fishing] 刺鱼成功，进入搏鱼阶段 HP=' +
-      this._catchSystem.getState().fishStamina.max);
+    console.log('[Fishing] 刺鱼成功 ' + fishInstance.name +
+      ' (' + fishInstance.quality + ')' +
+      ' L=' + fishInstance.length.toFixed(1) + 'cm' +
+      ' HP=' + this._catchSystem.getState().fishStamina.max);
   }
 
   _onHookTimeout() {
