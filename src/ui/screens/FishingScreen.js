@@ -16,6 +16,8 @@ import { WaitingUI } from '../WaitingUI.js';
 import { CatchSystem } from '../../fishing/CatchSystem.js';
 import { CatchUI } from '../CatchUI.js';
 import { FishGenerator } from '../../fishing/FishGenerator.js';
+import { getDefaultEquipment } from '../../data/PlaceholderEquipment.js';
+import { EquipmentManager } from '../../systems/EquipmentManager.js';
 
 /* ============================================================
    常量
@@ -56,8 +58,9 @@ class FishingScreen extends Screen {
     this._keyHandler = null;
     this._params = null;
     this._lastCastGrade = null;
+    this._equipment = (window._equipmentManager
+      ? window._equipmentManager.getTotalStats() : getDefaultEquipment());
 
-    /** @type {{ remaining: number, total: number, fish: Object|null }} 刺鱼计时 */
     this._hooking = { remaining: 0, total: 2000, fish: null };
   }
 
@@ -279,7 +282,7 @@ class FishingScreen extends Screen {
     if (!this._castingSystem) return;
     this._phase = Phase.CASTING;
     this._statusText = null;
-    this._castingSystem.start();
+    this._castingSystem.start(this._equipment);
     this._playSound('cast');
     if (DEBUG) console.log('[Fishing] 开始抛竿');
   }
@@ -342,7 +345,7 @@ class FishingScreen extends Screen {
 
     this._waitSystem.onBite((fish) => { this._onFishBite(fish); });
     this._waitSystem.onTimeout(() => { this._onWaitTimeout(); });
-    this._waitSystem.start(mapId, baitId, this._lastCastGrade);
+    this._waitSystem.start(mapId, baitId, this._lastCastGrade, this._equipment);
     this._phase = Phase.WAITING;
 
     if (DEBUG) console.log('[Fishing] 进入等待阶段');
@@ -433,7 +436,7 @@ class FishingScreen extends Screen {
 
     this._catchSystem = new CatchSystem();
     this._catchUI = new CatchUI();
-    this._catchSystem.start(fishInstance);
+    this._catchSystem.start(fishInstance, this._equipment);
 
     console.log('[Fishing] 刺鱼成功 ' + fishInstance.name +
       ' (' + fishInstance.quality + ')' +

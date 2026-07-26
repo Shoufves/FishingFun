@@ -18,6 +18,8 @@ import { Sprite } from './render/Sprite.js';
 import { AudioManager } from './core/AudioManager.js';
 import { FishingScreen } from './ui/screens/FishingScreen.js';
 import { ResultScreen } from './ui/screens/ResultScreen.js';
+import { EquipmentManager } from './systems/EquipmentManager.js';
+import { EQUIPMENT_LIBRARY } from './data/EquipmentData.js';
 
 /* ============================================================
    常量 & 状态
@@ -40,6 +42,9 @@ let fpsTimer = 0;
 
 /** @type {string} 当前帧率文本 */
 let fpsDisplay = '-- FPS';
+
+/** @type {boolean} 调试模式 */
+const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
 /** @type {boolean} 游戏主循环是否已启动 */
 let _gameRunning = false;
@@ -269,6 +274,34 @@ async function bootGame() {
 
     // 3. 挂载到全局，供后续模块访问
     window.GameState = saveData;
+
+    // 3a. 初始化装备管理器
+    const equipMgr = new EquipmentManager();
+    window._equipmentManager = equipMgr;
+    const hasGear = (saveData.equipment && saveData.equipment.backpack && saveData.equipment.backpack.length > 0)
+      || (saveData.inventory && saveData.inventory.equipment && saveData.inventory.equipment.length > 0);
+    if (hasGear) {
+      const equipState = saveData.equipment || {
+        backpack: saveData.inventory.equipment || [],
+        equipped: saveData.equipped || { rod: null, reel: null, line: null, hook: null },
+      };
+      equipMgr.restoreState(equipState);
+    } else {
+      // 首次启动：给玩家初始装备
+      const starterIds = ['rod_001', 'reel_001', 'line_001', 'hook_001'];
+      for (const id of starterIds) {
+        const eq = EQUIPMENT_LIBRARY.find(e => e.id === id);
+        if (eq) equipMgr.addEquipment(eq);
+      }
+      // 自动装备基础套件
+      for (const id of starterIds) {
+        equipMgr.equip(id);
+      }
+      if (DEBUG) {
+      console.log('[GameBoot] 已发放初始装备并自动装备');
+      console.log('[GameBoot] 装备状态:', JSON.stringify(equipMgr.getEquipped()));
+    }
+    }
 
     // 4. 初始化渲染管线
     renderer = new Renderer(canvas);

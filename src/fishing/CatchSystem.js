@@ -31,8 +31,13 @@ const RAGE_THRESHOLD = 0.25;
 /** @type {boolean} 调试模式 */
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
+import {
+  calcFishStamina, calcPlayerStamina, calcBaseDamage,
+  calcMarkerCount, calcMarkerSpeed, calcMarkerInterval,
+} from './FormulaSheet.js';
+
 /**
- * 占位装备属性（T-017 后替换）
+ * 占位装备属性（T-017 后替换，仅用于兜底）
  */
 const PLACEHOLDER_EQUIP = {
   rod:   { strength: 50 },
@@ -168,23 +173,19 @@ class CatchSystem {
     const fp = fish.fightPower || 1;
     const ra = fish.rarity || 1;
 
-    // 耐力（spec 2.3.2）
-    this._fishStamina.max = fp * 12 + ra * 6 + 20;
+    // 耐力（FormulaSheet calcFishStamina / calcPlayerStamina）
+    this._fishStamina.max = calcFishStamina(fp, ra);
     this._fishStamina.current = this._fishStamina.max;
-    this._playerStamina.max = eq.rod.strength * 1.5 + eq.reel.dragPower * 5
-      + eq.line.tensile * 0.8 + 50;
+    this._playerStamina.max = calcPlayerStamina(eq.rod.strength, eq.reel.dragPower, eq.line.tensile);
     this._playerStamina.current = this._playerStamina.max;
 
-    // 基础伤害（spec 2.3.4）
-    this._baseDamage = eq.rod.strength / 15 + eq.hook.sharpness / 8
-      + eq.reel.gearRatio * 2 + eq.line.tensile / 10;
+    // 基础伤害（FormulaSheet calcBaseDamage）
+    this._baseDamage = calcBaseDamage(eq.rod.strength, eq.hook.sharpness, eq.reel.gearRatio, eq.line.tensile);
 
-    // 标记参数（spec 2.3.3, 2.3.5）
-    const noteCount = 4 + Math.floor(fp * 1.2) + Math.floor(ra * 0.4);
-    this._noteInterval = Math.max(300, 800 - fp * 30);
-    this._noteSpeed = 80 + fp * 6;
-
-    if (ra > 7) this._noteSpeed *= 1.15;
+    // 标记参数（FormulaSheet calcMarkerCount/Speed/Interval）
+    const noteCount = calcMarkerCount(fp, ra);
+    this._noteInterval = calcMarkerInterval(fp, eq.reel.gearRatio);
+    this._noteSpeed = calcMarkerSpeed(fp, ra, eq.reel.gearRatio);
 
     // 生成标记
     for (let i = 0; i < noteCount; i++) {

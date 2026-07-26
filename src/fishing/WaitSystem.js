@@ -28,6 +28,8 @@ const BITE_CHECK_START = 0.50;
 /** @type {boolean} 调试模式 */
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
+import { calcWaitTime } from './FormulaSheet.js';
+
 /* ============================================================
    WaitSystem 类
    ============================================================ */
@@ -88,12 +90,14 @@ class WaitSystem {
    * @param {number} mapId - 地图 ID
    * @param {number} baitId - 饵料 ID
    * @param {string} castGrade - 抛竿判定等级
+   * @param {Object} [equipment] - 装备属性
    */
-  start(mapId, baitId, castGrade) {
+  start(mapId, baitId, castGrade, equipment) {
     this._mapId = mapId;
     this._gradeMultiplier = this._getGradeMultiplier(castGrade);
     this._selectedFish = this._selectFish(mapId);
     this._baitAttractiveness = this._findBaitAttractiveness(baitId);
+    this._equipment = equipment || {};
 
     const waitTimeMs = this._calculateWaitTime(this._selectedFish) * 1000;
 
@@ -236,13 +240,12 @@ class WaitSystem {
    */
   _calculateWaitTime(fish) {
     const baseWait = this._getBaseWait(this._mapId);
-    const rarityFactor = 1.0 + (fish.rarity - 1) * 0.06;
-    const baitFactor = 1.0 - this._baitAttractiveness / 500;
-    const randomFactor = 0.5 + Math.random() * 1.0;
-    const gradeFactor = this._gradeMultiplier;
-
-    const waitTime = baseWait * rarityFactor * baitFactor * randomFactor * gradeFactor;
-    return Math.max(3, Math.min(30, waitTime));
+    const eq = this._equipment || {};
+    const reel = eq.reel || {};
+    const line = eq.line || {};
+    // 公式中心接管，传入装备参数
+    return calcWaitTime(baseWait, fish.rarity, this._baitAttractiveness,
+      reel.gearRatio, line.sensitivity) * this._gradeMultiplier;
   }
 
   /**
