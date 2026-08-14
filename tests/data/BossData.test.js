@@ -39,3 +39,16 @@ test('getBossById 查询正确', () => {
   assert.equal(getBossById('boss_003').skill.type, 'immunePerfectOnly');
   assert.equal(getBossById('nope'), undefined);
 });
+
+test('Boss 对玩家伤害已平衡（2026-07-27 反馈：过高下调）', () => {
+  for (const b of BOSS_DATA) {
+    const dmg = b.trait.playerDamageMult || 1;
+    const stam = b.trait.playerStaminaMult || 1;
+    assert.ok(dmg <= 1.5, b.name + ' 对玩家伤害倍率应 ≤1.5，实际 ' + dmg);
+    assert.ok(stam >= 0.9, b.name + ' 玩家耐力上限倍率应 ≥0.9，实际 ' + stam);
+  }
+  // 具体数值锁定
+  assert.equal(getBossById('boss_001').trait.playerDamageMult, 1.2);
+  assert.equal(getBossById('boss_002').trait.playerStaminaMult, 0.9);
+  assert.equal(getBossById('boss_003').trait.playerDamageMult, 1.5);
+});

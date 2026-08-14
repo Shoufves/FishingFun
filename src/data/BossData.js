@@ -31,8 +31,8 @@ const BOSS_DATA = Object.freeze([
     noteDensityMult: 0.8,
     trait: {
       name: '痛击',
-      desc: '对玩家造成的耐力伤害提高 50%',
-      playerDamageMult: 1.5,
+      desc: '对玩家造成的耐力伤害提高 20%',
+      playerDamageMult: 1.2,
     },
     skill: {
       name: '甲壳屏障',
@@ -58,8 +58,8 @@ const BOSS_DATA = Object.freeze([
     noteDensityMult: 0.85,
     trait: {
       name: '炽热威压',
-      desc: '战斗开始时玩家耐力上限降低 20%',
-      playerStaminaMult: 0.8,
+      desc: '战斗开始时玩家耐力上限降低 10%',
+      playerStaminaMult: 0.9,
     },
     skill: {
       name: '熔岩护甲',
@@ -85,8 +85,8 @@ const BOSS_DATA = Object.freeze([
     noteDensityMult: 0.75,
     trait: {
       name: '龙威',
-      desc: '对玩家造成的耐力伤害提高 100%',
-      playerDamageMult: 2.0,
+      desc: '对玩家造成的耐力伤害提高 50%',
+      playerDamageMult: 1.5,
     },
     skill: {
       name: '神鳞护体',

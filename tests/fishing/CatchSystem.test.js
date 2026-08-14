@@ -49,11 +49,18 @@ test('耐力与伤害基础值正确', () => {
   assert.ok(state.notes.length >= 9, '标记数应 ≥ 公式基础数量(9)');
 });
 
+test('第一个键从轨道起点进入: 首键到达时间 ≥ 视觉旅行时间', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
+  assert.ok(cs._notes[0].expectedTime >= NOTE_TRAVEL_VISUAL_MS,
+    '首键到达时间应 ≥ 视觉旅行时间（从轨道起点出现），实际 ' + cs._notes[0].expectedTime);
+});
+
 test('Perfect 命中: 鱼耐力减全额伤害，玩家不掉耐', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const fishHp0 = cs.getState().fishStamina.current;
-  advanceTo(cs, 1500); // 第一个标记 expectedTime = 1500
+  advanceTo(cs, cs._notes[0].expectedTime); // 第一个标记到达时
   const r = cs.handleInput();
   assert.equal(r.grade, 'perfect');
   const s = cs.getState();
@@ -77,7 +84,7 @@ test('Miss 命中: 玩家耐力损失约 12%，鱼不掉血', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const fishHp0 = cs.getState().fishStamina.current;
-  advanceTo(cs, 1700); // 偏离 200ms → 自动 Miss
+  advanceTo(cs, cs._notes[0].expectedTime + 200); // 偏离 200ms → 自动 Miss
   const s = cs.getState();
   assert.equal(s.fishStamina.current, fishHp0);
   const drain = Math.round(s.playerStamina.max * 0.12);
@@ -98,7 +105,7 @@ test('玩家耐力归零 → 鱼逃脱', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   cs._playerStamina.current = 1;
-  advanceTo(cs, 1700); // Miss 掉 12% → 归零
+  advanceTo(cs, cs._notes[0].expectedTime + 200); // Miss 掉 12% → 归零
   assert.equal(cs.isFinished(), true);
   assert.equal(cs.getResult(), 'lose');
 });
@@ -115,13 +122,14 @@ test('连击: 连续 3 次 Perfect 触发 ×1.5 暴击', () => {
   }
   const interval = calcMarkerInterval(6, 4.0); // 与 CatchSystem 内部一致
   const baseDmg = cs.getBaseDamage();
+  const t0 = cs._notes[0].expectedTime;
 
   // 直接设定时间轴，精确命中每个标记（offset=0 → Perfect）
-  cs._elapsed = 1500;
+  cs._elapsed = t0;
   cs.handleInput(); // note0 perfect → combo 1
-  cs._elapsed = 1500 + interval;
+  cs._elapsed = t0 + interval;
   cs.handleInput(); // note1 perfect → combo 2
-  cs._elapsed = 1500 + interval * 2;
+  cs._elapsed = t0 + interval * 2;
   cs.handleInput(); // note2 perfect → combo 3 → 暴击 ×1.5
 
   const s = cs.getState();
@@ -293,7 +301,7 @@ test('低帧率输入精确判定: 判定基于输入事件时间戳而非帧时
   cs.start(FISH);
   // 模拟帧率极低：_elapsed 几乎未推进(0ms)，但玩家在真实时间 1500ms 按下
   cs._gameStartReal = 100000;
-  const r = cs.handleInput(100000 + 1500); // 事件时间戳 = 基准 + 1500
+  const r = cs.handleInput(100000 + cs._notes[0].expectedTime); // 事件时间戳 = 基准 + 首键到达时间
   assert.equal(r.grade, 'perfect', '应基于事件时间戳判定 Perfect');
   assert.equal(cs.getState().notes[0].hit, true);
 });

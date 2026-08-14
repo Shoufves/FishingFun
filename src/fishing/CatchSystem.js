@@ -21,11 +21,13 @@ const TRACK_WIDTH = 400;
 /** @type {number} 每个标记到达目标区所需时间（ms） */
 const NOTE_TRAVEL_TIME = 2000;
 
-/** @type {number} 键从轨道起点到目标区的视觉旅行时间（ms），横竖屏统一（CatchUI 共用） */
-const NOTE_TRAVEL_VISUAL_MS = 1500;
+/** @type {number} 键从轨道起点到目标区的视觉旅行时间（ms），横竖屏统一（CatchUI 共用）
+ *  2026-07-27 用户反馈：1500→1700，音符下落速度稍慢（约慢 13%） */
+const NOTE_TRAVEL_VISUAL_MS = 1700;
 
-/** @type {number} 准备时间（ms），第一个标记开始移动前 */
-const PREP_TIME = 1500;
+/** @type {number} 准备时间（ms），第一个标记开始移动前
+ *  与视觉旅行时间联动：保证第一个键恰好从轨道起点出现（不中途冒出） */
+const PREP_TIME = NOTE_TRAVEL_VISUAL_MS;
 
 /** @type {number} 判定后动画持续时间（ms） */
 const HIT_ANIM_DURATION = 150;
