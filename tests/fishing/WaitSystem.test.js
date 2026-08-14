@@ -71,13 +71,19 @@ test('高吸引力饵料等待时间更短', () => {
 
 test('浮漂状态: idle → bobbing（进度 > 35%）', () => {
   mockGameData();
-  const ws = new WaitSystem();
-  ws.start(1, 2, 'good', {});
-  // 低吸引力(0)保证不会提前咬钩，可观察状态迁移
-  for (let i = 0; i < 60; i++) ws.update(100);
-  const state = ws.getFloaterState();
-  assert.equal(state.state, 'bobbing');
-  assert.ok(state.progress > 0.35);
+  const origRandom = Math.random;
+  Math.random = () => 0.5; // 固定等待时长，避免随机扰动导致提前超时
+  try {
+    const ws = new WaitSystem();
+    ws.start(1, 2, 'good', {});
+    // 低吸引力(0)保证不会提前咬钩，可观察状态迁移
+    for (let i = 0; i < 60; i++) ws.update(100);
+    const state = ws.getFloaterState();
+    assert.equal(state.state, 'bobbing');
+    assert.ok(state.progress > 0.35);
+  } finally {
+    Math.random = origRandom;
+  }
 });
 
 test('等待超时触发 onTimeout（吸引力为 0 不咬钩）', () => {

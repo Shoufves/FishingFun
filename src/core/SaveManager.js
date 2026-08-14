@@ -64,6 +64,10 @@ const DEFAULT_SAVE_DATA = Object.freeze({
     language: 'zh',
   },
   unlockedMaps: [...INITIAL_UNLOCKED_MAPS],
+  // FUTURE: 烹饪/制作/排行/账号 预留数据槽（Phase 6）
+  cookingRecipes: [],
+  craftingRecipes: {},
+  craftingMaterials: {},
   timestamp: 0,
 });
 
@@ -267,6 +271,28 @@ function saveWithThrottle(data, delay = 2000) {
   }, delay);
 }
 
+/* ============================================================
+   FUTURE: 云存档桩（Phase 6 T-030，等待 v2 实现）
+   ============================================================ */
+
+/**
+ * 上传存档到云端（桩）
+ * @returns {Promise<boolean>} 占位：恒 false
+ */
+async function syncToCloud() {
+  // TODO: 等待 v2 实现
+  return false;
+}
+
+/**
+ * 从云端拉取存档（桩）
+ * @returns {Promise<Object|null>} 占位：恒 null
+ */
+async function syncFromCloud() {
+  // TODO: 等待 v2 实现
+  return null;
+}
+
 export {
   getSaveKey,
   save,
@@ -274,4 +300,6 @@ export {
   deleteSave,
   exportSave,
   saveWithThrottle,
+  syncToCloud,
+  syncFromCloud,
 };
