@@ -2,24 +2,30 @@
 
 /**
  * ============================================================
- * src/ui/screens/EquipmentScreen.js — 装备管理界面 (T-017 UI)
- * 版本: 1.0
- * 职责: 四槽装备栏展示、背包列表、点击装备/卸下、总属性展示
- * 来源: task.md T-017, spec.md 第3章
+ * src/ui/screens/EquipmentScreen.js — 装备管理界面 (T-017 UI + 鱼饵集成)
+ * 版本: 2.0
+ * 职责: 五槽装备栏（竿/轮/线/钩/饵）、分类筛选、点击替换、基础饵兜底
+ * 设计:
+ *   - 未选中槽位 → 下方按顺序显示全部装备（含饵料）
+ *   - 选中某槽位（如鱼竿）→ 下方只显示该类型装备，点击替换
+ *   - 装备栏不允许为空（初始/基础装备兜底，含无限基础饵）
+ * 来源: task.md T-017, 用户需求（鱼饵集成 + 分类 + 槽位不空）
  * ============================================================
  */
 
 import { Screen } from '../../core/ScreenRouter.js';
 import { QUALITY_CONFIG, TYPE_STATS } from '../../data/EquipmentDef.js';
+import { BASE_BAIT_ID } from '../../systems/BaitSystem.js';
 
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
-/** 槽位定义 */
+/** 槽位定义（含鱼饵） */
 const SLOTS = [
   { key: 'rod',  label: '鱼竿' },
   { key: 'reel', label: '渔轮' },
   { key: 'line', label: '鱼线' },
   { key: 'hook', label: '鱼钩' },
+  { key: 'bait', label: '鱼饵' },
 ];
 
 /** 行高与间距 */
@@ -27,16 +33,7 @@ const ROW_H = 44;
 const ROW_GAP = 6;
 const SLOT_Y = 66;
 const SLOT_H = 64;
-const SLOT_GAP = 10;
-
-/**
- * 背包装备首行 Y（渲染与点击区域共用，保证一致）
- * = SLOT_Y + SLOT_H + 12(总属性行) + 24(间距) + 26(背包标题)
- * @returns {number}
- */
-function getRowStartY() {
-  return SLOT_Y + SLOT_H + 62;
-}
+const SLOT_GAP = 8;
 
 /** 属性中文名 */
 const STAT_NAMES = {
@@ -46,9 +43,19 @@ const STAT_NAMES = {
   sharpness: '锋利', size: '大小', barb: '倒刺',
 };
 
+/**
+ * 列表首行 Y（渲染与点击区域共用）
+ * = SLOT_Y + SLOT_H + 10(筛选提示) + 16(总属性行) + 12(列表标题)
+ * @returns {number}
+ */
+function getRowStartY() {
+  return SLOT_Y + SLOT_H + 38;
+}
+
 class EquipmentScreen extends Screen {
   constructor(router) {
     super(router);
+    this._selectedSlot = null;
     this._scrollY = 0;
     this._statusText = null;
     this._statusTimer = null;
@@ -57,6 +64,7 @@ class EquipmentScreen extends Screen {
   /** @override */
   onEnter() {
     super.onEnter();
+    this._selectedSlot = null;
     this._scrollY = 0;
     this._statusText = null;
     this._wheelHandler = (e) => {
@@ -77,12 +85,61 @@ class EquipmentScreen extends Screen {
     super.onExit();
   }
 
+  /* ============================================================
+     数据
+     ============================================================ */
+
+  /**
+   * 生成列表项：未选中→全部；选中→对应类型（含已装备项置顶）
+   * @returns {Array<{kind:string, item:Object, isEquipped:boolean}>}
+   * @private
+   */
+  _getListItems() {
+    const mgr = window._equipmentManager;
+    const bs = window._baitSystem;
+    const items = [];
+    const slot = this._selectedSlot;
+
+    for (const s of SLOTS) {
+      if (s.key === 'bait') continue; // 饵料单独处理
+      if (slot && slot !== s.key) continue;
+      const equipped = mgr ? mgr.getEquipped()[s.key] : null;
+      const list = mgr ? mgr.getBackpack().filter(e => e.type === s.key) : [];
+      if (equipped) {
+        items.push({ kind: 'equip', item: equipped, isEquipped: true });
+      }
+      for (const eq of list) {
+        items.push({ kind: 'equip', item: eq, isEquipped: false });
+      }
+    }
+
+    // 饵料：基础饵（无限）置顶 + 库存饵料
+    if (!slot || slot === 'bait') {
+      items.push({
+        kind: 'bait',
+        item: {
+          baitId: BASE_BAIT_ID,
+          baitName: '基础饵',
+          attractiveness: 40,
+          count: Infinity,
+          baitType: '基础',
+        },
+        isEquipped: bs ? bs.getEquippedBait() === BASE_BAIT_ID : false,
+      });
+      if (bs) {
+        for (const b of bs.getOwnedBaits()) {
+          items.push({ kind: 'bait', item: b, isEquipped: bs.getEquippedBait() === b.baitId });
+        }
+      }
+    }
+    return items;
+  }
+
   /** @returns {number} 最大滚动量 */
   _getScrollMax() {
     const h = window.innerHeight;
-    const avail = h - 70 - SLOT_H - 40 - 60; // 标题+槽位+总属性+底部留白
-    const count = window._equipmentManager ? window._equipmentManager.getBackpack().length : 0;
-    const content = count * (ROW_H + ROW_GAP);
+    const avail = h - getRowStartY() - 44;
+    const content = this._getListItems().length * (ROW_H + ROW_GAP);
     return Math.max(0, content - avail);
   }
 
@@ -90,6 +147,10 @@ class EquipmentScreen extends Screen {
   _clampScroll() {
     this._scrollY = Math.max(0, Math.min(this._getScrollMax(), this._scrollY));
   }
+
+  /* ============================================================
+     渲染
+     ============================================================ */
 
   /** @override */
   render(ctx) {
@@ -108,58 +169,58 @@ class EquipmentScreen extends Screen {
     ctx.fillStyle = '#f0e6c0';
     ctx.fillText('装 备', cx, 30);
 
-    // 四槽位
-    const slotY = SLOT_Y;
-    const slotW = Math.min(140, (w - 40 - SLOT_GAP * 3) / 4);
-    const totalW = slotW * 4 + SLOT_GAP * 3;
+    // 五槽位
+    const slotW = Math.min(120, (w - 40 - SLOT_GAP * 4) / 5);
+    const totalW = slotW * 5 + SLOT_GAP * 4;
     const slotX0 = cx - totalW / 2;
     SLOTS.forEach((slot, i) => {
       const x = slotX0 + i * (slotW + SLOT_GAP);
-      this._drawSlot(ctx, mgr, slot, x, slotY, slotW, SLOT_H);
+      this._drawSlot(ctx, mgr, slot, x, SLOT_Y, slotW, SLOT_H);
     });
 
-    // 总属性
-    const statsY = slotY + SLOT_H + 12;
-    const total = mgr ? mgr.getTotalStats() : {};
-    const statLines = this._formatTotalStats(total);
+    // 筛选提示 + 总属性
+    const hintY = SLOT_Y + SLOT_H + 10;
     ctx.textAlign = 'left';
-    ctx.font = '12px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#7a9aaa';
-    ctx.fillText('总属性: ' + (statLines.length ? statLines.join('  ') : '（未装备）'), 16, statsY);
+    ctx.textBaseline = 'middle';
+    ctx.font = '11px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#5a7a8a';
+    ctx.fillText(this._selectedSlot
+      ? ('已筛选: ' + this._slotLabel(this._selectedSlot) + '（点击槽位取消筛选）')
+      : '点击槽位筛选对应装备 · 点击下方装备替换', 16, hintY);
 
-    // 背包列表
-    const listStartY = statsY + 24;
+    const statsY = hintY + 16;
+    const total = mgr ? mgr.getTotalStats() : {};
+    ctx.font = '11px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#4a6a7a';
+    ctx.fillText(this._formatTotalStats(total), 16, statsY);
+
+    // 列表
+    const listStartY = getRowStartY();
     const listEndY = h - 44;
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, listStartY - 4, w, listEndY - listStartY + 8);
     ctx.clip();
 
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 14px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#8ab0c0';
-    ctx.fillText('背包（点击装备 / 点击已装备槽位卸下）', cx, listStartY + 12);
-
-    const backpack = mgr ? mgr.getBackpack() : [];
+    const items = this._getListItems();
     const listW = Math.min(620, w * 0.86);
-    const rowStart = getRowStartY();
-    backpack.forEach((eq, index) => {
-      const y = rowStart - this._scrollY + index * (ROW_H + ROW_GAP);
+    items.forEach((entry, index) => {
+      const y = listStartY - this._scrollY + index * (ROW_H + ROW_GAP);
       if (y + ROW_H < listStartY || y > listEndY) return;
-      this._drawBackpackRow(ctx, eq, y, cx, listW);
+      this._drawListItem(ctx, entry, y, cx, listW);
     });
-    if (backpack.length === 0) {
+    if (items.length === 0) {
       ctx.textAlign = 'center';
       ctx.font = '13px Consolas, "Courier New", monospace';
       ctx.fillStyle = '#5a7a8a';
-      ctx.fillText('背包为空 — 前往商店购买装备', cx, rowStart + 20);
+      ctx.fillText('没有可显示的装备', cx, listStartY + 20);
     }
     ctx.restore();
 
     // 状态提示
     if (this._statusText) {
       ctx.textAlign = 'center';
-      ctx.font = 'bold 14px Consolas, "Courier New", monospace';
+      ctx.font = 'bold 13px Consolas, "Courier New", monospace';
       ctx.fillStyle = '#e0a040';
       ctx.fillText(this._statusText, cx, listEndY + 8);
     }
@@ -168,7 +229,18 @@ class EquipmentScreen extends Screen {
   }
 
   /**
-   * 绘制一个装备槽位
+   * 槽位中文名
+   * @param {string} key
+   * @returns {string}
+   * @private
+   */
+  _slotLabel(key) {
+    const s = SLOTS.find(x => x.key === key);
+    return s ? s.label : key;
+  }
+
+  /**
+   * 绘制一个装备槽位（选中高亮）
    * @param {CanvasRenderingContext2D} ctx
    * @param {Object} mgr - EquipmentManager
    * @param {Object} slot - 槽位定义
@@ -179,92 +251,142 @@ class EquipmentScreen extends Screen {
    * @private
    */
   _drawSlot(ctx, mgr, slot, x, y, w, h) {
-    const eq = mgr ? mgr.getEquipped()[slot.key] : null;
-    ctx.fillStyle = eq ? '#1a3a4a' : '#141f2c';
+    const selected = this._selectedSlot === slot.key;
+    ctx.fillStyle = '#1a3a4a';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = eq ? '#3a8a6a' : '#2a3a4a';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = selected ? '#f0d060' : '#2a4a5a';
+    ctx.lineWidth = selected ? 2 : 1;
     ctx.strokeRect(x, y, w, h);
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '12px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#5a7a8a';
+    ctx.font = '11px Consolas, "Courier New", monospace';
+    ctx.fillStyle = selected ? '#f0d060' : '#5a7a8a';
     ctx.fillText(slot.label, x + w / 2, y + 12);
 
+    if (slot.key === 'bait') {
+      this._drawBaitSlot(ctx, x, y, w, h);
+      return;
+    }
+    const eq = mgr ? mgr.getEquipped()[slot.key] : null;
     if (eq) {
       const qCfg = QUALITY_CONFIG[eq.quality] || QUALITY_CONFIG.COMMON;
-      ctx.font = 'bold 13px Consolas, "Courier New", monospace';
+      ctx.font = 'bold 11px Consolas, "Courier New", monospace';
       ctx.fillStyle = qCfg.color;
-      ctx.fillText(eq.name, x + w / 2, y + 32);
-      ctx.font = '10px Consolas, "Courier New", monospace';
+      ctx.fillText(this._short(eq.name, w), x + w / 2, y + 34);
+      ctx.font = '9px Consolas, "Courier New", monospace';
       ctx.fillStyle = '#6a8a9a';
-      ctx.fillText(qCfg.label + ' ★' + this._qualityStars(eq.quality), x + w / 2, y + 50);
+      ctx.fillText(qCfg.label, x + w / 2, y + 50);
     } else {
-      ctx.font = '12px Consolas, "Courier New", monospace';
+      ctx.font = '11px Consolas, "Courier New", monospace';
       ctx.fillStyle = '#3a5a6a';
       ctx.fillText('空', x + w / 2, y + 34);
     }
   }
 
   /**
-   * 品质星级（1-5）
-   * @param {string} quality
+   * 绘制鱼饵槽位内容
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   * @param {number} h
+   * @private
+   */
+  _drawBaitSlot(ctx, x, y, w, h) {
+    const bs = window._baitSystem;
+    if (!bs) return;
+    const label = bs.getEquippedLabel();
+    const attr = bs.getCurrentAttractiveness();
+    ctx.font = 'bold 11px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#a0e0c0';
+    ctx.fillText(this._short(label, w), x + w / 2, y + 30);
+    ctx.font = '9px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#6a8a9a';
+    ctx.fillText('ATTR ' + attr, x + w / 2, y + 48);
+  }
+
+  /**
+   * 按槽位宽度截断文本
+   * @param {string} text
+   * @param {number} w
    * @returns {string}
    * @private
    */
-  _qualityStars(quality) {
-    const map = { COMMON: 1, UNCOMMON: 2, RARE: 3, EPIC: 4, LEGENDARY: 5 };
-    return map[quality] || 1;
+  _short(text, w) {
+    const max = Math.max(2, Math.floor((w - 6) / 11));
+    if (!text) return '?';
+    return text.length > max ? text.slice(0, max - 1) + '…' : text;
   }
 
   /**
    * 格式化总属性为一行文本
    * @param {Object} total
-   * @returns {string[]}
+   * @returns {string}
    * @private
    */
   _formatTotalStats(total) {
     const parts = [];
     for (const slot of SLOTS) {
+      if (slot.key === 'bait') continue;
       const stats = total[slot.key] || {};
       const keys = Object.keys(stats);
       if (keys.length === 0) continue;
-      const line = keys.map(k => (STAT_NAMES[k] || k) + ':' + stats[k]).join(' ');
+      const line = keys.slice(0, 3).map(k => (STAT_NAMES[k] || k) + ':' + stats[k]).join(' ');
       parts.push('[' + slot.label + '] ' + line);
     }
-    return parts;
+    return parts.join('  ') || '（未装备）';
   }
 
   /**
-   * 绘制一行背包装备
+   * 绘制一行列表项
    * @param {CanvasRenderingContext2D} ctx
-   * @param {Object} eq
+   * @param {Object} entry - { kind, item, isEquipped }
    * @param {number} y
    * @param {number} cx
    * @param {number} listW
    * @private
    */
-  _drawBackpackRow(ctx, eq, y, cx, listW) {
-    const qCfg = QUALITY_CONFIG[eq.quality] || QUALITY_CONFIG.COMMON;
-    ctx.fillStyle = '#1a3a4a';
+  _drawListItem(ctx, entry, y, cx, listW) {
+    const { kind, item, isEquipped } = entry;
+    ctx.fillStyle = isEquipped ? '#1a3a4a' : '#162a38';
     ctx.fillRect(cx - listW / 2, y, listW, ROW_H);
 
+    if (kind === 'bait') {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 13px Consolas, "Courier New", monospace';
+      ctx.fillStyle = '#a0e0c0';
+      ctx.fillText(item.baitName, cx - listW / 2 + 12, y + ROW_H / 2 - 6);
+      ctx.font = '11px Consolas, "Courier New", monospace';
+      ctx.fillStyle = '#5a7a8a';
+      const countStr = item.count === Infinity ? '∞' : 'x' + item.count;
+      ctx.fillText((item.baitType || '') + ' · 吸引 ' + (item.attractiveness || 0) + ' · ' + countStr,
+        cx - listW / 2 + 12, y + ROW_H / 2 + 12);
+      ctx.textAlign = 'right';
+      ctx.font = '12px Consolas, "Courier New", monospace';
+      ctx.fillStyle = isEquipped ? '#6a9a8a' : '#4a6a7a';
+      ctx.fillText(isEquipped ? '已装备' : '点击装备', cx + listW / 2 - 12, y + ROW_H / 2);
+      return;
+    }
+
+    const qCfg = QUALITY_CONFIG[item.quality] || QUALITY_CONFIG.COMMON;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.font = 'bold 14px Consolas, "Courier New", monospace';
+    ctx.font = 'bold 13px Consolas, "Courier New", monospace';
     ctx.fillStyle = qCfg.color;
-    ctx.fillText(eq.name, cx - listW / 2 + 12, y + ROW_H / 2 - 5);
+    ctx.fillText(item.name, cx - listW / 2 + 12, y + ROW_H / 2 - 6);
 
-    ctx.font = '11px Consolas, "Courier New", monospace';
+    ctx.font = '10px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#5a7a8a';
-    const brief = TYPE_STATS[eq.type] ? TYPE_STATS[eq.type].slice(0, 3).map(k => (STAT_NAMES[k] || k) + ' ' + eq.baseStats[k]).join('  ') : '';
+    const brief = TYPE_STATS[item.type] ? TYPE_STATS[item.type].slice(0, 3)
+      .map(k => (STAT_NAMES[k] || k) + ' ' + item.baseStats[k]).join('  ') : '';
     ctx.fillText(brief, cx - listW / 2 + 12, y + ROW_H / 2 + 12);
 
     ctx.textAlign = 'right';
     ctx.font = '12px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#6a9a8a';
-    ctx.fillText('点击装备', cx + listW / 2 - 12, y + ROW_H / 2);
+    ctx.fillStyle = isEquipped ? '#6a9a8a' : '#4a6a7a';
+    ctx.fillText(isEquipped ? '已装备' : '点击替换', cx + listW / 2 - 12, y + ROW_H / 2);
   }
 
   /**
@@ -298,62 +420,47 @@ class EquipmentScreen extends Screen {
 
     this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
 
-    // 槽位点击 → 卸下
-    const mgr = window._equipmentManager;
-    const slotY = SLOT_Y;
-    const slotW = Math.min(140, (w - 40 - SLOT_GAP * 3) / 4);
-    const totalW = slotW * 4 + SLOT_GAP * 3;
+    // 槽位点击 → 切换筛选（再点取消）
+    const slotW = Math.min(120, (w - 40 - SLOT_GAP * 4) / 5);
+    const totalW = slotW * 5 + SLOT_GAP * 4;
     const slotX0 = cx - totalW / 2;
     SLOTS.forEach((slot, i) => {
       const x = slotX0 + i * (slotW + SLOT_GAP);
-      this._addClickRegion(x, slotY, slotW, SLOT_H, () => this._unequipSlot(mgr, slot));
+      this._addClickRegion(x, SLOT_Y, slotW, SLOT_H, () => {
+        this._selectedSlot = (this._selectedSlot === slot.key) ? null : slot.key;
+        this._scrollY = 0;
+      });
     });
 
-    // 背包行点击 → 装备
-    const rowStart = getRowStartY();
+    // 列表行点击 → 装备/替换
+    const listStartY = getRowStartY();
     const listW = Math.min(620, w * 0.86);
-    const backpack = mgr ? mgr.getBackpack() : [];
-    backpack.forEach((eq, index) => {
-      const y = rowStart - this._scrollY + index * (ROW_H + ROW_GAP);
-      if (y + ROW_H < slotY || y > h - 44) return;
-      this._addClickRegion(cx - listW / 2, y, listW, ROW_H, () => this._equipItem(mgr, eq));
+    const items = this._getListItems();
+    items.forEach((entry, index) => {
+      const y = listStartY - this._scrollY + index * (ROW_H + ROW_GAP);
+      if (y + ROW_H < SLOT_Y || y > h - 44) return;
+      this._addClickRegion(cx - listW / 2, y, listW, ROW_H, () => this._applyItem(entry));
     });
   }
 
   /**
-   * 卸下槽位装备
-   * @param {Object} mgr
-   * @param {Object} slot
+   * 应用列表项：装备替换 / 饵料装备
+   * @param {Object} entry
    * @private
    */
-  _unequipSlot(mgr, slot) {
-    if (!mgr) return;
-    if (!mgr.getEquipped()[slot.key]) {
-      this._setStatus(slot.label + ' 槽位为空');
+  _applyItem(entry) {
+    const { kind, item } = entry;
+    if (kind === 'bait') {
+      if (!window._baitSystem) return;
+      const ok = window._baitSystem.equipBait(item.baitId);
+      this._setStatus(ok
+        ? (item.baitId === BASE_BAIT_ID ? '已装备 基础饵（无限）' : '已装备 ' + item.baitName)
+        : '饵料库存不足');
       return;
     }
-    const ok = mgr.unequip(slot.key);
-    if (!ok) {
-      this._setStatus('背包已满，无法卸下');
-      return;
-    }
-    this._setStatus('已卸下 ' + slot.label);
-  }
-
-  /**
-   * 装备背包物品
-   * @param {Object} mgr
-   * @param {Object} eq
-   * @private
-   */
-  _equipItem(mgr, eq) {
-    if (!mgr) return;
-    const ok = mgr.equip(eq.id);
-    if (!ok) {
-      this._setStatus('装备失败');
-      return;
-    }
-    this._setStatus('已装备 ' + eq.name);
+    if (!window._equipmentManager) return;
+    const ok = window._equipmentManager.equip(item.id);
+    this._setStatus(ok ? '已装备 ' + item.name : '装备失败（背包已满？）');
   }
 
   /**

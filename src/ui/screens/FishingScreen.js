@@ -61,8 +61,8 @@ class FishingScreen extends Screen {
     this._equipment = (window._equipmentManager
       ? window._equipmentManager.getTotalStats() : getDefaultEquipment());
 
-    /** @type {number} 当前饵料 ID */
-    this._currentBaitId = (window._baitSystem && window._baitSystem.getEquippedBait()) || 1;
+    /** @type {number} 当前饵料 ID（0=基础饵） */
+    this._currentBaitId = (window._baitSystem && window._baitSystem.getEquippedBait()) || 0;
 
     this._hooking = { remaining: 0, total: 2000, fish: null };
 
@@ -611,18 +611,14 @@ class FishingScreen extends Screen {
   }
 
   /**
-   * 抛竿判定成功后消耗 1 个饵料（耗尽自动卸下，无饵料时提示）
+   * 抛竿判定成功后消耗 1 个饵料（基础饵无限；库存耗尽自动回基础饵）
    * @private
    */
   _consumeBaitOnce() {
     if (!window._baitSystem) return;
-    const hadBait = window._baitSystem.getEquippedBait() !== null;
+    // 基础饵（ID 0）恒可用：consumeBait 不消耗数量，且永不出现"无饵料"
     window._baitSystem.consumeBait();
     this._refreshBaitId();
-    if (!hadBait) {
-      this._statusText = 'No bait - basic attraction (Shop: buy more)';
-      if (DEBUG) console.log('[Fishing] 无饵料，使用基础吸引力（可去商店购买）');
-    }
   }
 
   /* ============================================================
@@ -644,8 +640,8 @@ class FishingScreen extends Screen {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = '12px Consolas,"Courier New",monospace';
-    ctx.fillStyle = bs.getEquippedBait() ? '#6a8a9a' : '#8a5650';
-    ctx.fillText('\u9975\u6599: ' + label + (attr > 0 ? ' (ATTR:' + attr + ')' : ''), x + w / 2, y);
+    ctx.fillStyle = bs.getEquippedBait() !== null ? '#6a8a9a' : '#8a5650';
+    ctx.fillText('\u9975\u6599: ' + label + ' (ATTR:' + attr + ')', x + w / 2, y);
     ctx.font = '10px Consolas,"Courier New",monospace';
     ctx.fillStyle = '#3a5a6a';
     ctx.fillText('[1-9] switch  [B] cycle', x + w / 2, y + 16);

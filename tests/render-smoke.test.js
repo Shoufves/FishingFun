@@ -295,6 +295,20 @@ test('全部屏幕 render 不抛错（含各阶段）', async () => {
   const equip = new EquipmentScreen(router);
   equip.onEnter();
   equip.render(ctx);
+
+  // 分类筛选：未选中显示全部（含饵料）；选中 rod 只显示鱼竿；选中 bait 只显示饵料
+  const allItems = equip._getListItems();
+  assert.ok(allItems.some(e => e.kind === 'equip' && e.item.type === 'rod'), '应包含鱼竿');
+  assert.ok(allItems.some(e => e.kind === 'bait'), '应包含饵料（基础饵+库存）');
+  equip._selectedSlot = 'rod';
+  const rodItems = equip._getListItems();
+  assert.ok(rodItems.length > 0 && rodItems.every(e => e.kind === 'equip' && e.item.type === 'rod'),
+    '选中鱼竿只显示鱼竿');
+  equip._selectedSlot = 'bait';
+  const baitItems = equip._getListItems();
+  assert.ok(baitItems.every(e => e.kind === 'bait'), '选中鱼饵只显示饵料');
+  equip._selectedSlot = null;
+  equip.render(ctx);
   equip.onExit();
 
   const dex = new FishDexScreen(router);

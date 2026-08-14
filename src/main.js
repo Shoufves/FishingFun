@@ -361,10 +361,10 @@ async function bootGame() {
       }
       baitMgr.restoreState(oldInv, null);
     } else {
-      // 首次启动：红蚯蚓 ×10
+      // 首次启动：红蚯蚓 ×10 入库存，默认装备基础饵（无限，槽位不空）
       baitMgr.addBait(1, 10);
-      baitMgr.equipBait(1);
-      if (DEBUG) console.log('[GameBoot] 已发放初始饵料 红蚯蚓 x10');
+      baitMgr.equipBait(0);
+      if (DEBUG) console.log('[GameBoot] 已发放初始饵料 红蚯蚓 x10，默认基础饵');
     }
 
     // 3c. 初始化经济管理器（等级/经验/金币）
