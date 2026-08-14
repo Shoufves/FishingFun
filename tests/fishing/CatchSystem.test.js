@@ -25,8 +25,8 @@ test('耐力与伤害基础值正确', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const state = cs.getState();
-  assert.equal(state.fishStamina.max, 82);    // 3×14+2×8+24
-  assert.equal(state.playerStamina.max, 265);  // 50×1.5+20×5+50×0.8+50
+  assert.equal(state.fishStamina.max, 120);   // 3×20+2×12+36
+  assert.equal(state.playerStamina.max, 170);  // 50+20×3+50×0.5+35
   assert.equal(state.notes.length, 9);         // 4+floor(4.5)+floor(1)
 });
 
@@ -45,7 +45,7 @@ test('Perfect 命中: 鱼耐力减全额伤害，玩家不掉耐', () => {
 test('Good 命中: 玩家耐力损失约 5%', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
-  advanceTo(cs, 1580); // 偏离 80ms → Good
+  cs._elapsed = cs._notes[0].expectedTime + 68; // 偏移 68ms → Good（窗口 ≤80ms）
   const r = cs.handleInput();
   assert.equal(r.grade, 'good');
   const s = cs.getState();
@@ -68,8 +68,8 @@ test('鱼耐力归零 → 捕获成功', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   cs._fishStamina.current = 1; // 压到临界
-  advanceTo(cs, 1580);
-  cs.handleInput(); // Good 伤害 ≈ 11.3 > 1
+  cs._elapsed = cs._notes[0].expectedTime + 68; // 偏移 68ms → Good
+  cs.handleInput(); // Good 伤害 ≈ 7.5 > 1
   assert.equal(cs.isFinished(), true);
   assert.equal(cs.getResult(), 'win');
 });
@@ -106,7 +106,7 @@ test('连击: 连续 3 次 Perfect 触发 ×1.5 暴击', () => {
 
   const s = cs.getState();
   assert.equal(s.combo, 3);
-  const expected = 124 - (baseDmg * 2 + baseDmg * 1.5); // 124 = 6×14+2×8+24
+  const expected = 180 - (baseDmg * 2 + baseDmg * 1.5); // 180 = 6×20+2×12+36
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
 });
 
@@ -143,7 +143,7 @@ test('hold: 头判命中 + 尾判完成，两段伤害但物量只 +1', () => {
 
   // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
   const s = cs.getState();
-  const expected = 82 - baseDmg - baseDmg * 0.6; // 82 = 3×14+2×8+24
+  const expected = 120 - baseDmg - baseDmg * 0.6; // 120 = 3×20+2×12+36
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
   assert.equal(n.hit, true, '尾判后键应消失');
 });
@@ -188,7 +188,7 @@ test('hold: 头判窗口内偏差过大（offset>100ms）→ 整体 Miss', () =>
   cs.start(FISH);
   const n = makeHoldNote(cs);
 
-  cs._elapsed = n.expectedTime + 120; // 120ms > 100ms 精度窗口
+  cs._elapsed = n.expectedTime + 120; // 120ms > 80ms 精度窗口
   const res = cs.handleInput();
   assert.equal(res.grade, 'miss');
   assert.equal(n.missed, true);
@@ -313,7 +313,7 @@ test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   const s = cs.getState();
   assert.equal(s.combo, 1);
   // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
-  const expected = 124 - baseDmg - baseDmg * 0.6; // 124 = 6×14+2×8+24
+  const expected = 180 - baseDmg - baseDmg * 0.6; // 180 = 6×20+2×12+36
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
 });
 

@@ -63,24 +63,24 @@ test('calcMarkerSpeed: 挣扎强度越高越快，稀有度>7加速', () => {
 });
 
 test('calcMarkerInterval: 间隔随挣扎强度缩短且不小于300ms', () => {
-  assert.equal(calcMarkerInterval(3, 3.0), 640); // (760-120) × 1.0
-  assert.ok(calcMarkerInterval(10, 4.0) >= 300);
+  assert.equal(calcMarkerInterval(3, 3.0), 550); // (700-150) × 1.0
+  assert.ok(calcMarkerInterval(10, 4.0) >= 260);
   assert.ok(calcMarkerInterval(3, 4.0) > calcMarkerInterval(6, 4.0));
 });
 
 test('calcFishStamina: FP×12 + R×6 + 20', () => {
-  assert.equal(calcFishStamina(3, 2), 82);
-  assert.equal(calcFishStamina(1, 1), 46);
-  assert.equal(calcFishStamina(10, 10), 244);
+  assert.equal(calcFishStamina(3, 2), 120);
+  assert.equal(calcFishStamina(1, 1), 68);
+  assert.equal(calcFishStamina(10, 10), 356);
 });
 
 test('calcPlayerStamina: 装备线性组合 + 50', () => {
-  assert.equal(calcPlayerStamina(50, 20, 50), 265);
+  assert.equal(calcPlayerStamina(50, 20, 50), 170);
   assert.equal(calcPlayerStamina(0, 0, 0), 50); // 下限保护
 });
 
 test('calcBaseDamage: 四类装备贡献之和', () => {
   const dmg = calcBaseDamage(40, 30, 4.0, 20);
-  assert.ok(Math.abs(dmg - 16.42) < 0.1); // 2.67+3.75+8+2
+  assert.ok(Math.abs(dmg - 10.94) < 0.1); // 1.90+2.50+5.2+1.33
   assert.ok(calcBaseDamage(80, 60, 6.0, 40) > dmg);
 });
