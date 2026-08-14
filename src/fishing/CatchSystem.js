@@ -101,6 +101,7 @@ class CatchNote {
     this.missed = false;
     this.holdActive = false;
     this.holdStart = 0;
+    this.lastKeydownAt = 0; // 最近一次按住时间（卡顿鲁棒：防超时保护误触发）
   }
 
   /** @returns {number} 当前相对于目标区的偏移 px（负=已通过） */
@@ -350,9 +351,13 @@ class CatchSystem {
     }
 
     // hold 超时保护：keyup 丢失时按尾判完成结算
+    // 卡顿鲁棒：仅当"尾部已过 150ms 且 300ms 内无按键活动"才触发，
+    // 否则玩家持续按住（keydown 保活）时不会因帧率低被误杀
     for (const note of this._notes) {
-      if (note.holdActive &&
-          this._elapsed > note.holdStart + note.duration + HOLD_WINDOW_MS) {
+      if (!note.holdActive) continue;
+      const tailPassed = this._elapsed > note.holdStart + note.duration + HOLD_WINDOW_MS;
+      const noRecentKey = this._elapsed > (note.lastKeydownAt || 0) + HOLD_WINDOW_MS * 2;
+      if (tailPassed && noRecentKey) {
         this._applyHoldTail(note, 'perfect');
       }
     }
@@ -435,8 +440,9 @@ class CatchSystem {
       }
 
       // hold 长按进行中：忽略重复 keydown（等待 keyup 尾判），
-      // 防止把进行中的 hold 键当普通键打掉
+      // 防止把进行中的 hold 键当普通键打掉；同时刷新保活时间戳
       if (note.type === 'hold' && note.holdActive) {
+        note.lastKeydownAt = this._elapsed;
         return { grade: 'hold', combo: this._combo, damage: 0, holdActive: true };
       }
 
@@ -512,6 +518,16 @@ class CatchSystem {
       return { grade: 'good', combo: this._combo, damage: this._lastDamage || 0, hold: true };
     }
     return { grade: 'miss', combo: this._combo, damage: 0 };
+  }
+
+  /**
+   * hold 长按保活：长按重复 keydown（e.repeat）时调用，
+   * 只刷新按键活动时间戳（防止卡顿帧下超时保护误杀），不做任何判定
+   */
+  handleHoldKeepAlive() {
+    for (const note of this._notes) {
+      if (note.holdActive) note.lastKeydownAt = this._elapsed;
+    }
   }
 
   /**

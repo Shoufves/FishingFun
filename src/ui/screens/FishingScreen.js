@@ -87,10 +87,16 @@ class FishingScreen extends Screen {
     this._keyHandler = (e) => {
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
-        // 忽略长按自动重复的 keydown：按住空格进行 hold 长按时，
-        // 重复事件会再次触发 handleInput 把 hold 键当普通键打掉（导致长条消失）
-        if (e.repeat) return;
         if (e.type === 'keydown') {
+          if (e.repeat) {
+            // 长按自动重复：仅转发给 hold 长按保活（刷新活动时间戳，
+            // 防止卡顿帧下超时保护误杀），不触发普通判定避免误打键
+            if (this._phase === Phase.CATCHING && this._catchSystem &&
+                !this._catchSystem.isFinished()) {
+              this._catchSystem.handleHoldKeepAlive();
+            }
+            return;
+          }
           this._handleSpace();
         } else if (e.type === 'keyup' && this._phase === Phase.CATCHING &&
                    this._catchSystem && !this._catchSystem.isFinished()) {
@@ -302,8 +308,8 @@ class FishingScreen extends Screen {
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 32px Consolas,"Courier New",monospace';
       ctx.fillStyle = this._statusText === 'Caught!' ? '#40d080' : '#e06050';
-      ctx.shadowColor = 'rgba(0,0,0,0.8)';
-      ctx.shadowBlur = 10;
+      ctx.fillText(this._statusText, w / 2 + 2, h / 2 + 2); // 阴影（双层文字）
+      ctx.fillStyle = this._statusText === 'Caught!' ? '#40d080' : '#e06050';
       ctx.fillText(this._statusText, w / 2, h / 2);
 
       ctx.font = '18px Consolas,"Courier New",monospace';
@@ -490,11 +496,10 @@ class FishingScreen extends Screen {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.font = 'bold 20px Consolas,"Courier New",monospace';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillText('Hit!', w / 2 + 2, h * 0.4 + 34);
       ctx.fillStyle = '#e04040';
-      ctx.shadowColor = 'rgba(200, 40, 40, 0.6)';
-      ctx.shadowBlur = 4;
       ctx.fillText('Hit!', w / 2, h * 0.4 + 32);
-      ctx.shadowBlur = 0;
       ctx.restore();
     }
 
@@ -677,11 +682,10 @@ class FishingScreen extends Screen {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = font;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillText(text, x + 1, y + 1);
     ctx.fillStyle = color;
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 4;
     ctx.fillText(text, x, y);
-    ctx.shadowBlur = 0;
   }
 
   _playSound(type) {

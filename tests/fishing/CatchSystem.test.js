@@ -238,6 +238,34 @@ test('hold 长按中重复 keydown 不会打掉进行中的 hold 键', () => {
   assert.equal(cs.getState().notes[0].hit, true);
 });
 
+test('hold 卡顿鲁棒: 大 dt 帧 + 持续按住(保活) 不会被超时保护误杀', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
+  const n = makeHoldNote(cs);
+  n.duration = 600;
+  cs._notes = cs._notes.slice(0, 1);
+
+  // 头判
+  cs._elapsed = n.expectedTime;
+  cs.handleInput();
+  assert.equal(cs.getState().notes[0].holdActive, true);
+
+  // 模拟 3 帧严重卡顿（每帧 300ms，elapsed 将越过尾部时间）
+  for (let i = 0; i < 3; i++) {
+    cs.update(300);
+    cs.handleHoldKeepAlive(); // 卡顿期间玩家持续按住 → 保活刷新时间戳
+  }
+  const mid = cs.getState().notes[0];
+  assert.equal(mid.hit, false, '卡顿 + 持续按住不应被超时保护误杀');
+  assert.equal(mid.holdActive, true, 'hold 应保持长按中');
+
+  // 玩家松开（keyup）→ 正常尾判
+  cs._elapsed = n.expectedTime + n.duration;
+  const tail = cs.handleHoldRelease();
+  assert.equal(tail.grade, 'perfect');
+  assert.equal(cs.getState().notes[0].hit, true);
+});
+
 test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   const cs = new CatchSystem();
   cs.start(FISH_HARD);

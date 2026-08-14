@@ -218,28 +218,21 @@ class CatchUI {
       const hasAnim = note.animTimer > 0;
 
       if (hasAnim) {
+        // 命中动画（无 shadow，用亮色实心代替——shadow 在高分屏开销极大）
         const p = note.animTimer / 150;
         const expandW = barW + (1 - p) * 18;
-        ctx.save();
-        ctx.shadowColor = 'rgba(240, 230, 200, 0.8)';
-        ctx.shadowBlur = 16;
         ctx.globalAlpha = 0.3 + p * 0.5;
         ctx.fillStyle = '#fff8e0';
         ctx.fillRect(noteX - expandW / 2, y + barPad, expandW, barH);
-        ctx.restore();
-        ctx.save();
         ctx.globalAlpha = (1 - p) * 0.3;
         ctx.fillStyle = '#80d0ff';
         const ghostW = barW + (1 - p) * 30;
         ctx.fillRect(noteX - ghostW / 2, y + barPad, ghostW, barH);
-        ctx.restore();
+        ctx.globalAlpha = 1;
       }
 
       ctx.fillStyle = '#e0d8c0';
-      ctx.shadowColor = 'rgba(200, 200, 200, 0.3)';
-      ctx.shadowBlur = 4;
       ctx.fillRect(noteX - barW / 2, y + barPad, barW, barH);
-      ctx.shadowBlur = 0;
     }
   }
 
@@ -329,10 +322,11 @@ class CatchUI {
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 32px Consolas,"Courier New",monospace';
       ctx.fillStyle = ft.color || '#e06050';
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-      ctx.shadowBlur = 6;
+      // 双层文字模拟阴影（避免 shadowBlur 的高分屏开销）
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillText(ft.text, arcX + 2, arcY + 2);
+      ctx.fillStyle = ft.color || '#e06050';
       ctx.fillText(ft.text, arcX, arcY);
-      ctx.shadowBlur = 0;
       ctx.restore();
     }
   }
@@ -344,10 +338,7 @@ class CatchUI {
     ctx.textBaseline = 'bottom';
     ctx.font = 'bold 16px Consolas,"Courier New",monospace';
     ctx.fillStyle = isPerfect ? '#f0d060' : '#c0c0c0';
-    ctx.shadowColor = isPerfect ? 'rgba(240, 200, 60, 0.5)' : 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 6;
     ctx.fillText(combo + 'x COMBO', cx, cy);
-    ctx.shadowBlur = 0;
     if (combo >= 5) {
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
@@ -370,10 +361,7 @@ class CatchUI {
     ctx.textBaseline = 'bottom';
     ctx.font = 'bold ' + c.size + 'px Consolas,"Courier New",monospace';
     ctx.fillStyle = c.color;
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowBlur = 4;
     ctx.fillText(c.text, cx, cy);
-    ctx.shadowBlur = 0;
   }
 }
 

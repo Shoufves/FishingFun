@@ -12,6 +12,9 @@ class WaterAnimation {
     /** @type {number} 累计动画时间（ms） */
     this._elapsed = 0;
 
+    /** @type {number} 质量档位：1=高，0=低（低帧率自适应） */
+    this._quality = 1;
+
     /** @type {Array<{amp:number, freq:number, speed:number, phase:number}>} 波层参数 */
     this._waves = [
       { amp: 3,  freq: 0.04, speed: 1.5, phase: 0 },
@@ -23,6 +26,24 @@ class WaterAnimation {
     /** @type {Array<{x:number, y:number, r:number, speed:number, phase:number}>} 光点 */
     this._sparkles = [];
     this._initSparkles();
+  }
+
+  /**
+   * 设置渲染质量（性能自适应）
+   * @param {number} q - 1=高（4 波层+12 光点），0=低（2 波层+6 光点）
+   */
+  setQuality(q) {
+    this._quality = q >= 1 ? 1 : 0;
+  }
+
+  /** @returns {Array} 当前生效的波层 */
+  _activeWaves() {
+    return this._quality >= 1 ? this._waves : this._waves.slice(0, 2);
+  }
+
+  /** @returns {Array} 当前生效的光点 */
+  _activeSparkles() {
+    return this._quality >= 1 ? this._sparkles.slice(0, 12) : this._sparkles.slice(0, 6);
   }
 
   /**
@@ -70,8 +91,9 @@ class WaterAnimation {
     ctx.fillRect(x, y, w, h);
 
     // ========== 多层正弦波 ==========
-    for (let waveIdx = 0; waveIdx < this._waves.length; waveIdx++) {
-      const wave = this._waves[waveIdx];
+    const waves = this._activeWaves();
+    for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
+      const wave = waves[waveIdx];
       ctx.strokeStyle = 'rgba(120, 200, 240, ' + (0.08 + waveIdx * 0.03) + ')';
       ctx.lineWidth = 1;
 
@@ -86,7 +108,7 @@ class WaterAnimation {
     }
 
     // ========== 光点闪烁 ==========
-    for (const s of this._sparkles) {
+    for (const s of this._activeSparkles()) {
       const alpha = 0.3 + 0.4 * Math.sin(time * s.speed + s.phase);
       ctx.fillStyle = 'rgba(200, 235, 255, ' + alpha + ')';
       ctx.beginPath();

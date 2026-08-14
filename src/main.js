@@ -77,10 +77,11 @@ let audio = null;
 
 /**
  * 调整 Canvas 尺寸以匹配窗口大小
- * 维护 devicePixelRatio 以保证 Retina 屏清晰度
+ * 维护 devicePixelRatio 以保证 Retina 屏清晰度；
+ * DPR 上限 2：高分屏(3x/4x)下物理像素减少 2~4 倍，大幅降低全屏绘制/阴影开销
  */
 function resizeCanvas() {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const width = window.innerWidth;
   const height = window.innerHeight;
 
@@ -91,6 +92,40 @@ function resizeCanvas() {
 
   // 缩放上下文以匹配 DPR
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* ============================================================
+   性能自适应（T-025 帧预算监控简化版）
+   ============================================================ */
+
+/** @type {number} 连续慢帧计数（帧耗时 > 40ms） */
+let _slowFrameCount = 0;
+
+/** @type {boolean} 是否已切换低质量渲染 */
+let _lowQuality = false;
+
+/** 帧耗时阈值（ms），超过则视为慢帧 */
+const SLOW_FRAME_MS = 40;
+
+/**
+ * 每帧检测帧耗时，连续慢帧时自动降质（减少水面波层/光点）
+ * @param {number} dt - 帧耗时（ms）
+ */
+function updateQualityBudget(dt) {
+  if (dt > SLOW_FRAME_MS) {
+    _slowFrameCount++;
+  } else {
+    _slowFrameCount = 0;
+    if (_lowQuality && _slowFrameCount === 0 && waterAnim) {
+      // 帧率恢复后升回高质量
+      waterAnim.setQuality(1);
+      _lowQuality = false;
+    }
+  }
+  if (!_lowQuality && _slowFrameCount >= 15 && waterAnim) {
+    waterAnim.setQuality(0);
+    _lowQuality = true;
+  }
 }
 
 /* ============================================================
@@ -108,6 +143,9 @@ function gameLoop(timestamp) {
   frameCount++;
   fpsTimer += dt;
   if (fpsTimer >= 1000) { fpsDisplay = `${frameCount} FPS`; frameCount = 0; fpsTimer = 0; }
+
+  // 0. 帧预算监控（连续慢帧自动降质）
+  updateQualityBudget(dt);
 
   // 1. 更新
   if (waterAnim) waterAnim.update(dt);
