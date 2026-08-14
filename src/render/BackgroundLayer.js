@@ -33,49 +33,61 @@ class BackgroundLayer {
     // 预生成静态元素（避免每帧创建新对象）
     this._mountains = this._generateMountains();
     this._trees = this._generateTrees();
+
+    // 静态背景缓存（天空/山峦/树/水面只绘制一次，每帧 drawImage）
+    this._cacheCanvas = null;
+    this._cacheCtx = null;
+    this._cachedOffset = null;
+    this._initCache();
   }
 
   /**
-   * 生成远景山峦轮廓
-   * @returns {Array<{x:number, w:number, h:number}>}
+   * 初始化静态背景缓存（离屏 320×180）
+   * @private
    */
-  _generateMountains() {
-    const peaks = [];
-    let x = -40;
-    while (x < 360) {
-      const w = 30 + Math.random() * 50;
-      const h = 20 + Math.random() * 35;
-      peaks.push({ x, w, h });
-      x += w * 0.5 + Math.random() * 15;
+  _initCache() {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 180;
+      this._cacheCanvas = canvas;
+      this._cacheCtx = canvas.getContext('2d');
+      this._cachedOffset = this.parallaxOffset;
+      this._renderStatic(this._cacheCtx, this.parallaxOffset);
+    } catch (e) {
+      // 缓存失败时降级为每帧直接绘制
+      this._cacheCtx = null;
     }
-    return peaks;
   }
 
   /**
-   * 生成中景树影
-   * @returns {Array<{x:number, size:number}>}
-   */
-  _generateTrees() {
-    const trees = [];
-    let x = -20;
-    while (x < 340) {
-      const size = 8 + Math.random() * 16;
-      trees.push({ x, size: Math.floor(size) });
-      x += 10 + Math.random() * 25;
-    }
-    return trees;
-  }
-
-  /**
-   * 渲染完整背景
+   * 渲染完整背景（优先使用缓存）
    * @param {CanvasRenderingContext2D} ctx - 离屏 320×180 上下文
    * @param {number} dt - 距上一帧毫秒
    * @param {number} elapsed - 累计毫秒
    */
   render(ctx, dt, elapsed) {
+    if (this._cacheCtx) {
+      // 视差偏移变化时重建缓存（游戏内偏移固定，极少触发）
+      if (this.parallaxOffset !== this._cachedOffset) {
+        this._cachedOffset = this.parallaxOffset;
+        this._renderStatic(this._cacheCtx, this.parallaxOffset);
+      }
+      ctx.drawImage(this._cacheCanvas, 0, 0);
+      return;
+    }
+    this._renderStatic(ctx, this.parallaxOffset);
+  }
+
+  /**
+   * 绘制静态背景（天空渐变 + 双层山峦 + 双层树影 + 水面）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} offset - 视差偏移量
+   * @private
+   */
+  _renderStatic(ctx, offset) {
     const W = 320;
     const H = 180;
-    const offset = this.parallaxOffset;
 
     // ========== 1. 天空渐变 ==========
     const skyGrad = ctx.createLinearGradient(0, 0, 0, H - this.waterLevel);
@@ -124,6 +136,37 @@ class BackgroundLayer {
     // ========== 4. 水面 ==========
     ctx.fillStyle = WATER_COLOR;
     ctx.fillRect(0, H - this.waterLevel, W, this.waterLevel);
+  }
+
+  /**
+   * 生成远景山峦轮廓
+   * @returns {Array<{x:number, w:number, h:number}>}
+   */
+  _generateMountains() {
+    const peaks = [];
+    let x = -40;
+    while (x < 360) {
+      const w = 30 + Math.random() * 50;
+      const h = 20 + Math.random() * 35;
+      peaks.push({ x, w, h });
+      x += w * 0.5 + Math.random() * 15;
+    }
+    return peaks;
+  }
+
+  /**
+   * 生成中景树影
+   * @returns {Array<{x:number, size:number}>}
+   */
+  _generateTrees() {
+    const trees = [];
+    let x = -20;
+    while (x < 340) {
+      const size = 8 + Math.random() * 16;
+      trees.push({ x, size: Math.floor(size) });
+      x += 10 + Math.random() * 25;
+    }
+    return trees;
   }
 
   /**

@@ -448,6 +448,12 @@ function getCanvasCoords(clientX, clientY) {
 /** @type {boolean} 是否已激活音频 */
 let _audioResumed = false;
 
+/** @type {number} 最近一次 touchstart 时间（用于忽略触屏合成 click） */
+let _lastTouchAt = 0;
+
+/** @type {boolean} 触屏双触发防护：touchstart 后 350ms 内的合成 click 忽略 */
+const TOUCH_CLICK_GUARD_MS = 350;
+
 /** 点击/触摸事件分发到当前屏幕（CSS 像素坐标） */
 function handlePointerDown(clientX, clientY) {
   // 首次点击激活音频（遵循浏览器自动播放策略）
@@ -465,14 +471,16 @@ function handlePointerDown(clientX, clientY) {
   }
 }
 
-// 鼠标点击
+// 鼠标点击（触屏设备上 touchstart 已处理，350ms 内的合成 click 忽略）
 canvas.addEventListener('click', (e) => {
+  if (Date.now() - _lastTouchAt < TOUCH_CLICK_GUARD_MS) return;
   handlePointerDown(e.clientX, e.clientY);
 });
 
 // 触控点击（移动端）
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
+  _lastTouchAt = Date.now();
   const touch = e.touches[0];
   if (touch) {
     handlePointerDown(touch.clientX, touch.clientY);

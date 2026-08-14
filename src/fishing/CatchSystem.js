@@ -3,8 +3,9 @@
 /**
  * ============================================================
  * src/fishing/CatchSystem.js — 收线搏鱼逻辑系统
- * 版本: 1.0
+ * 版本: 2.0 (T-009.1: 复杂键型)
  * 职责: 双耐力管理、判定标记生成与移动、伤害计算、狂暴与连击
+ * 键型: tap(单点) / hold(长按) / double(双连击) / triplet(三连滚奏) / accel(变速段)
  * 约定: 纯逻辑，不依赖 UI 或渲染代码
  * ============================================================
  */
@@ -31,6 +32,31 @@ const RAGE_THRESHOLD = 0.25;
 /** @type {boolean} 调试模式 */
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
+/* ============================================================
+   复杂键型常量（T-009.1）
+   ============================================================ */
+
+/** @type {number} hold 最短时长（ms） */
+const HOLD_MIN_MS = 500;
+
+/** @type {number} 挣扎强度每点增加的 hold 时长（ms） */
+const HOLD_PER_FP_MS = 40;
+
+/** @type {number} double 两键间隔（ms） */
+const DOUBLE_GAP_MS = 160;
+
+/** @type {number} triplet 三键间隔（ms） */
+const TRIPLET_GAP_MS = 120;
+
+/** @type {number} hold 完美伤害倍率 */
+const HOLD_DAMAGE_MULT = 1.5;
+
+/** @type {number} hold 部分伤害倍率 */
+const HOLD_PARTIAL_MULT = 0.5;
+
+/** @type {number} hold 头部/尾部判定窗口（ms） */
+const HOLD_WINDOW_MS = 150;
+
 import {
   calcFishStamina, calcPlayerStamina, calcBaseDamage,
   calcMarkerCount, calcMarkerSpeed, calcMarkerInterval,
@@ -55,15 +81,21 @@ class CatchNote {
    * @param {number} id
    * @param {number} expectedTime - 预计到达目标区的绝对游戏时间（ms）
    * @param {number} speed - 移动速度（px/s）
+   * @param {string} [type='tap'] - 'tap' | 'hold'
+   * @param {number} [duration=0] - hold 时长（ms）
    */
-  constructor(id, expectedTime, speed) {
+  constructor(id, expectedTime, speed, type = 'tap', duration = 0) {
     this.id = id;
     this.expectedTime = expectedTime;
     this.speed = speed;
+    this.type = type;
+    this.duration = duration;
     this.hit = false;
     this.grade = null;
     this.animTimer = 0;
     this.missed = false;
+    this.holdActive = false;
+    this.holdStart = 0;
   }
 
   /** @returns {number} 当前相对于目标区的偏移 px（负=已通过） */
@@ -187,11 +219,8 @@ class CatchSystem {
     this._noteInterval = calcMarkerInterval(fp, eq.reel.gearRatio);
     this._noteSpeed = calcMarkerSpeed(fp, ra, eq.reel.gearRatio);
 
-    // 生成标记
-    for (let i = 0; i < noteCount; i++) {
-      const et = PREP_TIME + i * this._noteInterval;
-      this._notes.push(new CatchNote(i, et, this._noteSpeed));
-    }
+    // 生成标记（含复杂键型）
+    this._notes = this._buildNotes(fp, ra, noteCount);
 
     this._currentNoteIdx = 0;
     this._elapsed = 0;
@@ -204,13 +233,71 @@ class CatchSystem {
     this._shake = { x: 0, y: 0, remaining: 0 };
 
     if (DEBUG) {
+      const holdCount = this._notes.filter(n => n.type === 'hold').length;
       console.log('[Catch] 开始, fish=' + fish.fishName +
         ', fishHP=' + this._fishStamina.max +
         ', playerHP=' + this._playerStamina.max +
-        ', notes=' + noteCount +
+        ', notes=' + this._notes.length + '(hold=' + holdCount + ')' +
         ', dmg=' + this._baseDamage.toFixed(1) +
         ', speed=' + this._noteSpeed.toFixed(0) + 'px/s');
     }
+  }
+
+  /**
+   * 生成标记序列（tap 为主，按复杂度插入 hold/double/triplet/accel）
+   * @param {number} fp - 挣扎强度
+   * @param {number} ra - 稀有度
+   * @param {number} noteCount - 基础标记数
+   * @returns {CatchNote[]}
+   * @private
+   */
+  _buildNotes(fp, ra, noteCount) {
+    const complexity = Math.min(1, (fp + ra) / 20);
+    const notes = [];
+    let t = PREP_TIME;
+    let accelLeft = 0;
+
+    for (let i = 0; i < noteCount; i++) {
+      const accel = accelLeft > 0;
+      if (accelLeft > 0) accelLeft--;
+
+      let type = 'tap';
+      if (!accel && complexity >= 0.35) {
+        const roll = Math.random();
+        if (roll < 0.08 + complexity * 0.05) {
+          type = 'hold';
+        } else if (roll < 0.20) {
+          type = 'double';
+        } else if (roll < 0.26) {
+          type = 'triplet';
+        } else if (roll < 0.34 && complexity >= 0.55) {
+          type = 'accel';
+          accelLeft = 4;
+        }
+      }
+
+      const step = accel ? this._noteInterval * 0.6 : this._noteInterval;
+
+      if (type === 'double') {
+        notes.push(new CatchNote(notes.length, t, this._noteSpeed, 'tap'));
+        notes.push(new CatchNote(notes.length, t + DOUBLE_GAP_MS, this._noteSpeed, 'tap'));
+        t += DOUBLE_GAP_MS + step;
+      } else if (type === 'triplet') {
+        for (let k = 0; k < 3; k++) {
+          notes.push(new CatchNote(notes.length, t + k * TRIPLET_GAP_MS, this._noteSpeed, 'tap'));
+        }
+        t += TRIPLET_GAP_MS * 2 + step;
+      } else if (type === 'hold') {
+        const dur = HOLD_MIN_MS + fp * HOLD_PER_FP_MS;
+        notes.push(new CatchNote(notes.length, t, this._noteSpeed, 'hold', dur));
+        t += dur + step * 0.7;
+      } else {
+        notes.push(new CatchNote(notes.length, t, this._noteSpeed, 'tap'));
+        t += step;
+      }
+    }
+
+    return notes;
   }
 
   /**
@@ -257,6 +344,15 @@ class CatchSystem {
       if (ft.timer <= 0) this._floatingTexts.splice(i, 1);
     }
 
+    // hold 超时保护：keyup 丢失时按完整长按结算
+    for (const note of this._notes) {
+      if (note.holdActive &&
+          this._elapsed > note.holdStart + note.duration + HOLD_WINDOW_MS * 2) {
+        note.holdActive = false;
+        this._applyHit(note, 'perfect', this._baseDamage * HOLD_DAMAGE_MULT);
+      }
+    }
+
     // 自动 Miss：检查当前标记是否已通过
     this._checkAutoMiss();
     this._extendNotes();
@@ -285,6 +381,9 @@ class CatchSystem {
       if (note.hit || note.missed) {
         this._currentNoteIdx++;
         continue;
+      }
+      if (note.holdActive) {
+        break; // 长按进行中，不自动 miss
       }
       if (this._elapsed > note.expectedTime + 150) {
         this._applyMiss(note);
@@ -315,8 +414,10 @@ class CatchSystem {
   }
 
   /**
-   * 处理玩家输入
-   * @returns {{ grade: string, combo: number, damage: number }}
+   * 处理玩家按下（keydown）
+   * - tap/double/triplet：命中判定
+   * - hold：头部窗口内按下 → 启动长按
+   * @returns {{ grade: string, combo: number, damage: number, holdActive?: boolean }}
    */
   handleInput() {
     if (this._finished) return { grade: 'miss', combo: this._combo, damage: 0 };
@@ -325,6 +426,23 @@ class CatchSystem {
     while (this._currentNoteIdx < this._notes.length) {
       const note = this._notes[this._currentNoteIdx];
       if (note.hit || note.missed) {
+        this._currentNoteIdx++;
+        continue;
+      }
+
+      // hold 键：头部窗口内按下开始长按
+      if (note.type === 'hold' && !note.holdActive) {
+        if (this._elapsed < note.expectedTime - HOLD_WINDOW_MS) {
+          return { grade: 'miss', combo: this._combo, damage: 0 }; // 太早
+        }
+        if (this._elapsed <= note.expectedTime + HOLD_WINDOW_MS) {
+          note.holdActive = true;
+          note.holdStart = this._elapsed;
+          this._lastGrade = 'hold';
+          return { grade: 'hold', combo: this._combo, damage: 0, holdActive: true };
+        }
+        // 头部窗口已过且未启动 → 按 Miss 处理
+        this._applyMiss(note);
         this._currentNoteIdx++;
         continue;
       }
@@ -353,6 +471,35 @@ class CatchSystem {
   }
 
   /**
+   * 处理玩家松开（keyup）——仅对进行中的 hold 生效
+   * @returns {{ grade: string, combo: number, damage: number, hold?: boolean }}
+   */
+  handleHoldRelease() {
+    if (this._finished) return { grade: 'miss', combo: this._combo, damage: 0 };
+
+    for (const note of this._notes) {
+      if (!note.holdActive) continue;
+      note.holdActive = false;
+      const releaseOffset = this._elapsed - (note.holdStart + note.duration);
+
+      if (Math.abs(releaseOffset) <= HOLD_WINDOW_MS) {
+        // 完整长按 → 高额伤害
+        this._applyHit(note, 'perfect', this._baseDamage * HOLD_DAMAGE_MULT);
+        return { grade: 'perfect', combo: this._combo, damage: this._lastDamage || 0, hold: true };
+      }
+      if (releaseOffset < 0) {
+        // 提前松开 → 部分伤害（玩家扣 2%）
+        this._applyHit(note, 'great', this._baseDamage * HOLD_PARTIAL_MULT);
+        return { grade: 'great', combo: this._combo, damage: this._lastDamage || 0, hold: true };
+      }
+      // 松晚了 → 部分伤害（玩家扣 5%）
+      this._applyHit(note, 'good', this._baseDamage * HOLD_PARTIAL_MULT);
+      return { grade: 'good', combo: this._combo, damage: this._lastDamage || 0, hold: true };
+    }
+    return { grade: 'miss', combo: this._combo, damage: 0 };
+  }
+
+  /**
    * 判定单个标记等级
    * @param {CatchNote} note
    * @param {number} offset - ms 偏差
@@ -369,8 +516,9 @@ class CatchSystem {
    * 应用命中效果
    * @param {CatchNote} note
    * @param {string} grade
+   * @param {number} [dmgOverride] - 自定义伤害（hold 使用）；缺省按 grade 系数
    */
-  _applyHit(note, grade) {
+  _applyHit(note, grade, dmgOverride) {
     note.hit = true;
     note.grade = grade;
     note.animTimer = HIT_ANIM_DURATION;
@@ -387,17 +535,19 @@ class CatchSystem {
 
     // 伤害计算（spec 2.3.4）
     const p = this._getProbCoeff(grade);
-    let dmg = this._baseDamage * p;
+    let dmg = (typeof dmgOverride === 'number') ? dmgOverride : this._baseDamage * p;
 
-    // 连击奖励（spec 2.3.6）
-    if (grade === 'perfect' && this._combo >= 5) {
-      dmg *= 2.0;
-      this._flashWhite = true;
-      this._flashTimer = 200;
-    } else if (grade === 'perfect' && this._combo >= 3) {
-      dmg *= 1.5;
-      this._flashWhite = true;
-      this._flashTimer = 150;
+    // 连击奖励（spec 2.3.6；hold 自带倍率不叠加）
+    if (typeof dmgOverride !== 'number') {
+      if (grade === 'perfect' && this._combo >= 5) {
+        dmg *= 2.0;
+        this._flashWhite = true;
+        this._flashTimer = 200;
+      } else if (grade === 'perfect' && this._combo >= 3) {
+        dmg *= 1.5;
+        this._flashWhite = true;
+        this._flashTimer = 150;
+      }
     }
 
     // 玩家耐力损失（spec 2.3.4）
@@ -414,7 +564,7 @@ class CatchSystem {
 
     if (DEBUG) {
       console.log('[Catch] hit #' + note.id + ' ' + grade +
-        ' offset=' + (this._elapsed - note.expectedTime).toFixed(0) + 'ms' +
+        (note.type === 'hold' ? '(HOLD)' : '') +
         ' dmg=' + dmg.toFixed(1) +
         ' fishHP=' + this._fishStamina.current.toFixed(0) +
         ' playerHP=' + this._playerStamina.current.toFixed(0) +
@@ -422,8 +572,10 @@ class CatchSystem {
     }
 
     // 浮动伤害数字
+    const isCrit = grade === 'perfect' && this._combo >= 3;
+    const isHold = typeof dmgOverride === 'number';
     this._floatingTexts.push({
-      text: (grade === 'perfect' && this._combo >= 3) ? '-' + Math.floor(dmg) + ' CRIT!' : '-' + Math.floor(dmg),
+      text: isHold ? '-' + Math.floor(dmg) + ' HOLD!' : (isCrit ? '-' + Math.floor(dmg) + ' CRIT!' : '-' + Math.floor(dmg)),
       color: grade === 'perfect' ? '#40d080' : grade === 'great' ? '#60b0e0' : '#e0c060',
       timer: 800,
       y: 0,
@@ -550,6 +702,9 @@ class CatchSystem {
         id: n.id,
         expectedTime: n.expectedTime,
         speed: n.speed,
+        type: n.type,
+        duration: n.duration,
+        holdActive: n.holdActive,
         hit: n.hit,
         missed: n.missed,
         grade: n.grade,
@@ -591,4 +746,12 @@ class CatchSystem {
   getBaseDamage() { return this._baseDamage; }
 }
 
-export { CatchSystem, TRACK_WIDTH, NOTE_TRAVEL_TIME };
+export {
+  CatchSystem,
+  CatchNote,
+  TRACK_WIDTH,
+  NOTE_TRAVEL_TIME,
+  HOLD_MIN_MS,
+  HOLD_WINDOW_MS,
+  HOLD_DAMAGE_MULT,
+};

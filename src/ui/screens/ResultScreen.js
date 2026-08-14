@@ -169,6 +169,8 @@ class ResultScreen extends Screen {
     this._drawRow(ctx, rx, infoRowY, '\u7A00\u6709\u5EA6', stars);
     this._drawRow(ctx, rx, infoRowY + rowH, '\u53D8\u5F02', MUTATION_NAMES[this._fish.mutationLevel] || '\u65E0');
     this._drawRow(ctx, rx, infoRowY + rowH * 2, '\u6C34\u5C42', this._fish.habitatLayer || '-');
+    this._drawRow(ctx, rx, infoRowY + rowH * 3, '\u6355\u83B7\u65F6\u95F4',
+      this._formatCaughtTime(this._fish.caughtAt));
 
     // 历史纪录：身长最长 / 体重最重
     const histY = infoRowY + rowH * 4 + 6;
@@ -312,6 +314,22 @@ class ResultScreen extends Screen {
     }
   }
 
+  /**
+   * 格式化捕获时间（T-011.1）
+   * @param {number|undefined} ts - 时间戳
+   * @returns {string}
+   * @private
+   */
+  _formatCaughtTime(ts) {
+    if (!ts) return '-';
+    try {
+      return new Date(ts).toLocaleTimeString('zh-CN',
+        { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return '-';
+    }
+  }
+
   /** @private */
   _drawRow(ctx, x, y, label, value) {
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
@@ -437,8 +455,7 @@ class ResultScreen extends Screen {
       this.router.replace('FISHING', { mapId: this._mapId });
     });
     this._addClickRegion(cx + btnGap / 2, btnY, btnW, 44, () => {
-      this.router.pop();
-      this.router.pop();
+      this.router.popTo('MAP_SELECT');
     });
   }
 }

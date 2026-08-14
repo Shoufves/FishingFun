@@ -94,7 +94,8 @@ class ShopScreen extends Screen {
       return rows.map(b => ({
         ...b,
         price: b.basePriceGold || 10,
-        minLevel: Math.max(1, Math.min(40, (b.rarity || 1) * 3)),
+        // 基础饵料（Rarity 1）1 级即可购买，保证新手经济闭环
+        minLevel: Math.max(1, Math.min(40, b.rarity || 1)),
       }));
     } catch (e) {
       return [];

@@ -25,6 +25,9 @@ const BOBBING_THRESHOLD = 0.35;
 /** @type {number} 咬钩检测起始进度阈值 */
 const BITE_CHECK_START = 0.50;
 
+/** @type {number} 无饵料时的基础吸引力（保证新手无饵也能钓到鱼） */
+const NO_BAIT_ATTRACTIVENESS = 40;
+
 /** @type {boolean} 调试模式 */
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
@@ -269,18 +272,19 @@ class WaitSystem {
   }
 
   /**
-   * 查找饵料吸引力
+   * 查找饵料吸引力（无饵料时返回基础吸引力）
    * @param {number} baitId
    * @returns {number}
    */
   _findBaitAttractiveness(baitId) {
+    if (!baitId) return NO_BAIT_ATTRACTIVENESS;
     try {
       const baitData = window.GameData ? window.GameData.BaitTable : null;
-      if (!baitData) return 40;
+      if (!baitData) return NO_BAIT_ATTRACTIVENESS;
       const bait = baitData.find(b => b.baitId === baitId);
-      return bait ? bait.attractiveness : 40;
+      return bait ? bait.attractiveness : NO_BAIT_ATTRACTIVENESS;
     } catch (e) {
-      return 40;
+      return NO_BAIT_ATTRACTIVENESS;
     }
   }
 
@@ -389,4 +393,4 @@ class WaitSystem {
   }
 }
 
-export { WaitSystem, BASE_BITE_RATE };
+export { WaitSystem, BASE_BITE_RATE, NO_BAIT_ATTRACTIVENESS };

@@ -29,15 +29,29 @@ class CatchUI {
       ctx.fillRect(0, 0, w, h);
     }
 
+    // 大鱼（高稀有度/高挣扎强度）搏鱼时屏幕边缘红色光晕
+    const fish = state.fish;
+    const isBig = fish && (fish.rarity >= 7 || fish.fightPower >= 7);
+    if (isBig) {
+      const pulse = 0.05 + 0.04 * Math.sin(Date.now() / 350);
+      ctx.fillStyle = 'rgba(200, 30, 30, ' + pulse.toFixed(3) + ')';
+      ctx.fillRect(0, 0, w, 8);
+      ctx.fillRect(0, h - 8, w, 8);
+      ctx.fillRect(0, 0, 8, h);
+      ctx.fillRect(w - 8, 0, 8, h);
+    }
+
     const margin = 56;
     const barH = 26;
     const trackH = 28;
     const gap = 5;
     const isPortrait = h > w;
 
+    // 轨道框：竖版占宽 86%（两侧留白），横版固定合理宽度并居中，
+    // 保证"区域框"清晰，键从框右边缘出现
     const trackW = isPortrait
-      ? w - margin * 2
-      : Math.min(360, (w - margin * 2) * 0.6);
+      ? Math.max(220, w * 0.86)
+      : Math.min(420, Math.max(240, (w - 160) * 0.62));
     const trackX = (w - trackW) / 2;
     const playerBarY = h * 0.88;
     const trackY = playerBarY - barH - gap;
@@ -47,7 +61,8 @@ class CatchUI {
       state.playerStamina, '#4080c0', '#103060', '\uD83C\uDFA3');
     this._drawTrack(ctx, trackX, trackY, trackW, trackH, state);
     this._drawStaminaBar(ctx, margin, fishBarY, w - margin * 2, barH,
-      state.fishStamina, '#c04040', '#601010', this._fishIcon(state.fish));
+      state.fishStamina, '#c04040', '#601010',
+      this._fishIcon(state.fish, state.fishStamina.percent));
 
     const targetZoneX = trackX + 56;
     if (state.lastGrade) {
@@ -76,6 +91,14 @@ class CatchUI {
     ctx.strokeStyle = '#3a5a6a';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
+
+    // 低耐力红色脉冲边框
+    if (isLow) {
+      ctx.strokeStyle = warnFlash ? '#ff9090' : '#c04040';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+    }
+
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.font = 'bold 14px Consolas,"Courier New",monospace';
@@ -84,20 +107,36 @@ class CatchUI {
     ctx.textAlign = 'right';
     ctx.font = '13px Consolas,"Courier New",monospace';
     ctx.fillText(Math.floor(pct * 100) + '%', x + w - 6, y + h / 2);
+
+    // 低耐力警告
+    if (isLow && warnFlash) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 11px Consolas,"Courier New",monospace';
+      ctx.fillStyle = '#ff8080';
+      ctx.fillText('LOW!', x + w / 2, y - 10);
+    }
   }
 
-  /** @private */
-  _fishIcon(fish) {
+  /**
+   * 鱼图标表情随耐力比例变化（T-009.2）
+   * @param {Object} fish
+   * @param {number} percent - 鱼耐力比例 0~1
+   * @returns {string}
+   * @private
+   */
+  _fishIcon(fish, percent) {
     if (!fish) return '\uD83D\uDC1F';
     if (fish.rarity >= 8) return '\uD83D\uDC1B\u2728';
-    if (fish.rarity >= 5) return '\uD83D\uDC20';
-    return '\uD83D\uDC1F';
+    if (percent < 0.15) return '\uD83D\uDE35';   // 翻白眼
+    if (percent < 0.35) return '\uD83D\uDE23';   // 皱眉
+    if (percent < 0.6) return '\uD83D\uDE20';    // 生气
+    return '\uD83D\uDC1F';                        // 平静
   }
 
   /** @private */
   _drawTrack(ctx, x, y, w, h, state) {
-    const targetX = x + 56;
-    const visibleRange = w - 56; // 从目标区到右边缘的像素距离
+    const targetX = x + Math.min(64, w * 0.16);
+    const visibleRange = (x + w) - targetX; // 目标区到轨道框右边缘的距离
 
     ctx.fillStyle = '#0a1a2a';
     ctx.fillRect(x, y, w, h);
@@ -129,12 +168,13 @@ class CatchUI {
       ctx.fillText('!! RAGE !!', x + w / 2, y + 2);
     }
 
-    // 基于时间进度的键定位：所有键从右边缘到目标区固定走 NOTE_TRAVEL_VISUAL_MS 毫秒
+    // 基于时间进度的键定位：键从轨道框右边缘（progress=0）到目标区（progress=1）
     for (const note of state.notes) {
       if (!note.visible || note.hit || note.missed) continue;
 
       const timeLeft = note.expectedTime - state.elapsed;
-      const visualProgress = 1 - timeLeft / NOTE_TRAVEL_VISUAL_MS;
+      // clamp 下界 0：timeLeft>1500 的键贴右边缘等待，绝不超出轨道框
+      const visualProgress = Math.max(0, 1 - timeLeft / NOTE_TRAVEL_VISUAL_MS);
 
       // 超出可视范围的不绘制
       if (timeLeft > NOTE_TRAVEL_VISUAL_MS + 100) continue;
@@ -142,6 +182,12 @@ class CatchUI {
 
       // 键从右边缘（progress=0）穿过目标区（progress=1）继续向左
       const noteX = targetX + (1 - visualProgress) * visibleRange;
+
+      // hold 长按键：长条渲染，头部在当前 noteX，尾部向右延伸
+      if (note.type === 'hold') {
+        this._drawHoldNote(ctx, note, noteX, y, barPad, h, x, w, visibleRange);
+        continue;
+      }
 
       const hasAnim = note.animTimer > 0;
       const barW = 5;
@@ -175,7 +221,51 @@ class CatchUI {
   }
 
   /**
+   * 绘制 hold 长按键（头部=按下点，向右延伸 duration 对应的长度）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {Object} note
+   * @param {number} headX - 头部 X（目标区方向）
+   * @param {number} y - 轨道 Y
+   * @param {number} barPad - 上下内边距
+   * @param {number} h - 轨道高
+   * @param {number} trackX - 轨道左边缘
+   * @param {number} trackW - 轨道宽
+   * @param {number} visibleRange - 目标区到右边缘距离
+   * @private
+   */
+  _drawHoldNote(ctx, note, headX, y, barPad, h, trackX, trackW, visibleRange) {
+    const holdW = Math.max(16, (note.duration / NOTE_TRAVEL_VISUAL_MS) * visibleRange);
+    // 限制在轨道框内（头部可能已越过目标区向左）
+    const startX = Math.max(headX - 2, trackX + 2);
+    const endX = Math.min(headX + holdW, trackX + trackW - 2);
+    if (endX <= startX) return;
+
+    const barH = h - barPad * 2;
+    const active = note.holdActive;
+
+    ctx.fillStyle = active ? '#1a4a4a' : '#122a3a';
+    ctx.fillRect(startX, y + barPad, endX - startX, barH);
+    ctx.strokeStyle = active ? '#40e0e0' : '#2a8ab0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(startX, y + barPad, endX - startX, barH);
+
+    // 头部亮块（按下点）
+    ctx.fillStyle = active ? '#60f0f0' : '#40b0d0';
+    ctx.fillRect(startX, y + barPad, 4, barH);
+
+    // HOLD 文字（宽度足够时显示）
+    if (endX - startX > 46) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 9px Consolas,"Courier New",monospace';
+      ctx.fillStyle = active ? '#a0ffff' : '#5a9ab0';
+      ctx.fillText('HOLD', (startX + endX) / 2, y + h / 2);
+    }
+  }
+
+  /**
    * 大号伤害数字（在鱼耐力条右上方爆炸弹出）
+   * 性能：最多同时渲染 4 个，降低阴影开销
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} margin
    * @param {number} fishBarY
@@ -185,8 +275,9 @@ class CatchUI {
   _drawFloatingDamage(ctx, margin, fishBarY, w, texts) {
     const baseX = w - margin;
     const baseY = fishBarY;
+    const visible = texts.filter(ft => ft.timer > 0).slice(0, 4);
 
-    for (const ft of texts) {
+    for (const ft of visible) {
       const alpha = Math.min(1, ft.timer / 350);
       if (alpha <= 0) continue;
 
@@ -202,7 +293,7 @@ class CatchUI {
       ctx.font = 'bold 32px Consolas,"Courier New",monospace';
       ctx.fillStyle = ft.color || '#e06050';
       ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 6;
       ctx.fillText(ft.text, arcX, arcY);
       ctx.shadowBlur = 0;
       ctx.restore();
@@ -243,7 +334,7 @@ class CatchUI {
     ctx.font = 'bold ' + c.size + 'px Consolas,"Courier New",monospace';
     ctx.fillStyle = c.color;
     ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 4;
     ctx.fillText(c.text, cx, cy);
     ctx.shadowBlur = 0;
   }

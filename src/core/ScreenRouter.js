@@ -169,6 +169,12 @@ class ScreenRouter {
      * @type {Function|null} (screenType:string) => void
      */
     this.onScreenEnter = null;
+
+    /** @type {number} 最近一次 push/replace 时间（防双击） */
+    this._lastNavAt = 0;
+
+    /** @type {number} 最近一次 pop 时间（防连按） */
+    this._lastPopAt = 0;
   }
 
   /**
@@ -182,10 +188,16 @@ class ScreenRouter {
 
   /**
    * 推入新屏幕
+   * 防抖：300ms 内重复 push 同一类型时忽略（触屏合成 click 双触发防护）
    * @param {string} type - ScreenType 枚举值
    * @param {*} [params] - 传入 onEnter 的参数
    */
   push(type, params) {
+    if (this._current && this._current._type === type &&
+        Date.now() - this._lastNavAt < 300) {
+      return;
+    }
+    this._lastNavAt = Date.now();
     const factory = this._registry[type];
     if (!factory) {
       console.error('[ScreenRouter] 未注册的屏幕类型:', type);
@@ -215,6 +227,10 @@ class ScreenRouter {
    * - 若栈为空但有当前屏幕（根节点），清空当前屏幕
    */
   pop() {
+    // 防连按：300ms 内重复 pop 忽略
+    if (Date.now() - this._lastPopAt < 300) return;
+    this._lastPopAt = Date.now();
+
     // 情况1：栈中有历史，退回上一屏幕
     if (this._history.length > 0) {
       // 退出当前屏幕
@@ -246,11 +262,37 @@ class ScreenRouter {
   }
 
   /**
+   * 弹出直到栈顶为目标类型（不管栈深多深，一步到位）
+   * @param {string} type - ScreenType 枚举值
+   */
+  popTo(type) {
+    if (this._current && this._current._type === type) return;
+    const idx = this._history.map(s => s._type).lastIndexOf(type);
+    if (idx === -1) {
+      console.warn('[ScreenRouter] popTo 目标不在栈中:', type);
+      return;
+    }
+    if (this._current) this._current.onExit();
+    // 弹出目标之上的所有屏幕
+    while (this._history.length > idx + 1) this._history.pop();
+    const target = this._history.pop();
+    this._current = target;
+    target.onEnter();
+    if (this.onScreenEnter) this.onScreenEnter(target._type);
+    console.log('[ScreenRouter] popTo → ' + type + ' (栈深: ' + this.getStackDepth() + ')');
+  }
+
+  /**
    * 替换当前屏幕（不改变栈深）
    * @param {string} type - ScreenType 枚举值
    * @param {*} [params] - 传入 onEnter 的参数
    */
   replace(type, params) {
+    if (this._current && this._current._type === type &&
+        Date.now() - this._lastNavAt < 300) {
+      return;
+    }
+    this._lastNavAt = Date.now();
     const factory = this._registry[type];
     if (!factory) {
       console.error('[ScreenRouter] 未注册的屏幕类型:', type);
@@ -615,19 +657,41 @@ class MapSelectScreen extends Screen {
     ctx.fillStyle = unlocked ? '#e0d8c0' : '#5a6a7a';
     ctx.fillText(map.mapName, cx - listW / 2 + 16, y + MAP_ITEM_H / 2 - 5);
 
+    // 描述文本：按可用宽度截断，避免窄屏/长文本溢出
     ctx.font = '12px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#5a7a8a';
-    ctx.fillText(map.description || map.regionHint || '', cx - listW / 2 + 16, y + MAP_ITEM_H / 2 + 13);
+    const descText = this._truncateText(ctx,
+      map.description || map.regionHint || '', listW - 52);
+    ctx.fillText(descText, cx - listW / 2 + 16, y + MAP_ITEM_H / 2 + 13);
 
     ctx.textAlign = 'right';
     ctx.font = '12px Consolas, "Courier New", monospace';
     if (unlocked) {
       ctx.fillStyle = '#6a9a8a';
-      ctx.fillText('难度 ' + (map.difficulty || 1) + '/10', cx + listW / 2 - 12, y + MAP_ITEM_H / 2);
+      ctx.fillText('难度 ' + (map.difficulty || 1) + '/10', cx + listW / 2 - 12, y + MAP_ITEM_H / 2 - 5);
     } else {
       ctx.fillStyle = '#8a5650';
-      ctx.fillText('🔒 Lv.' + (map.minLevel || 1) + ' 解锁', cx + listW / 2 - 12, y + MAP_ITEM_H / 2);
+      ctx.fillText('🔒 Lv.' + (map.minLevel || 1) + ' 解锁', cx + listW / 2 - 12, y + MAP_ITEM_H / 2 - 5);
     }
+  }
+
+  /**
+   * 按最大宽度截断文本（超出加省略号）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} text
+   * @param {number} maxWidth
+   * @returns {string}
+   * @private
+   */
+  _truncateText(ctx, text, maxWidth) {
+    const str = String(text || '');
+    if (ctx.measureText(str).width <= maxWidth) return str;
+    let out = '';
+    for (const ch of str) {
+      if (ctx.measureText(out + ch + '…').width > maxWidth) break;
+      out += ch;
+    }
+    return out + '…';
   }
 
   /**

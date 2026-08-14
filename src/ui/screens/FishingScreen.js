@@ -87,7 +87,15 @@ class FishingScreen extends Screen {
     this._keyHandler = (e) => {
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
-        this._handleSpace();
+        if (e.type === 'keydown') {
+          this._handleSpace();
+        } else if (e.type === 'keyup' && this._phase === Phase.CATCHING &&
+                   this._catchSystem && !this._catchSystem.isFinished()) {
+          const r = this._catchSystem.handleHoldRelease();
+          if (r && r.grade !== 'miss') {
+            this._playSound(r.grade === 'perfect' ? 'perfect' : 'click');
+          }
+        }
         return;
       }
       // 数字键 1-9 切换饵料（按 BaitTable ID）
@@ -104,6 +112,7 @@ class FishingScreen extends Screen {
       }
     };
     this._addListener(document, 'keydown', this._keyHandler);
+    this._addListener(document, 'keyup', this._keyHandler);
   }
 
   /** @override */
@@ -328,7 +337,7 @@ class FishingScreen extends Screen {
   /** @override */
   _setupRegions() {
     super._setupRegions();
-    this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
+    this._addClickRegion(16, 12, 90, 36, () => { this.router.popTo('MAP_SELECT'); });
   }
 
   /* ============================================================
@@ -347,7 +356,7 @@ class FishingScreen extends Screen {
     if (this._phase === Phase.CATCHING && this._catchSystem && !this._catchSystem.isFinished()) {
       const result = this._catchSystem.handleInput();
       if (result) {
-        const soundMap = { perfect: 'perfect', great: 'click', good: 'click', miss: 'miss' };
+        const soundMap = { perfect: 'perfect', great: 'click', good: 'click', miss: 'miss', hold: 'click' };
         const sound = soundMap[result.grade] || 'click';
         this._playSound(sound);
       }
@@ -364,19 +373,8 @@ class FishingScreen extends Screen {
     this._statusText = null;
     this._castingSystem.start(this._equipment);
 
-    // 消耗饵料
-    if (window._baitSystem) {
-      const hadBait = window._baitSystem.getEquippedBait() !== null;
-      window._baitSystem.consumeBait();
-      this._refreshBaitId();
-      if (!hadBait) {
-        this._statusText = 'No bait - basic attraction';
-        if (DEBUG) console.log('[Fishing] 无饵料，使用基础吸引力');
-      }
-    }
-
     this._playSound('cast');
-    if (DEBUG) console.log('[Fishing] 开始抛竿，饵料ID=' + this._currentBaitId);
+    if (DEBUG) console.log('[Fishing] 开始抛竿');
   }
 
   _stopCasting() {
@@ -389,6 +387,11 @@ class FishingScreen extends Screen {
     this._phase = Phase.RESULT;
     this._lastCastGrade = result.grade;
     const { grade } = result;
+
+    // 抛竿判定成功（Perfect/Good/Poor）才消耗饵料；Cast Fail 不消耗（spec 2.1.2）
+    if (grade !== 'fail') {
+      this._consumeBaitOnce();
+    }
 
     switch (grade) {
       case 'perfect':
@@ -429,7 +432,8 @@ class FishingScreen extends Screen {
 
   _startWaiting() {
     const mapId = (this._params && this._params.mapId) ? this._params.mapId : 1;
-    const baitId = this._currentBaitId || 1;
+    // 无饵料时传 0 → WaitSystem 使用基础吸引力，与 UI 提示一致
+    const baitId = this._currentBaitId || 0;
 
     this._waitSystem = new WaitSystem();
     this._waitingUI = new WaitingUI();
@@ -476,14 +480,14 @@ class FishingScreen extends Screen {
 
       // 抖动的 Hit! 在浮漂正下方（与原 Waiting... 同位置）
       ctx.save();
-      const sx = (Math.random() - 0.5) * 4;
+      const sx = Math.sin(Date.now() / 60) * 2;
       ctx.translate(sx, 0);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.font = 'bold 20px Consolas,"Courier New",monospace';
       ctx.fillStyle = '#e04040';
       ctx.shadowColor = 'rgba(200, 40, 40, 0.6)';
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 4;
       ctx.fillText('Hit!', w / 2, h * 0.4 + 32);
       ctx.shadowBlur = 0;
       ctx.restore();
@@ -585,6 +589,21 @@ class FishingScreen extends Screen {
     this._castingSystem = new CastingSystem();
     this._lastCastGrade = null;
     if (DEBUG) console.log('[Fishing] 回到就绪阶段');
+  }
+
+  /**
+   * 抛竿判定成功后消耗 1 个饵料（耗尽自动卸下，无饵料时提示）
+   * @private
+   */
+  _consumeBaitOnce() {
+    if (!window._baitSystem) return;
+    const hadBait = window._baitSystem.getEquippedBait() !== null;
+    window._baitSystem.consumeBait();
+    this._refreshBaitId();
+    if (!hadBait) {
+      this._statusText = 'No bait - basic attraction (Shop: buy more)';
+      if (DEBUG) console.log('[Fishing] 无饵料，使用基础吸引力（可去商店购买）');
+    }
   }
 
   /* ============================================================

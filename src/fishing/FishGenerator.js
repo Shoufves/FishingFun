@@ -83,6 +83,7 @@ class FishGenerator {
       expReward: fishDef.expReward || 5,
       habitatLayer: fishDef.habitatLayer || '底层',
       activeTime: fishDef.activeTime || '全天',
+      caughtAt: Date.now(), // T-011.1: 捕获时间戳
     };
 
     if (DEBUG) {

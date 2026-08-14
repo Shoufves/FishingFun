@@ -158,6 +158,14 @@ test('bootGame 完整启动：数据/存档/管理器/路由', async () => {
   const saved = JSON.parse(localStorageMock.getItem('AnglerSave_v1'));
   assert.equal(saved.player.gold, w._economy.getGold());
   assert.ok(saved.fishdex.records[def.fishId], '存档应包含鱼获纪录');
+
+  // 验证 popTo：无论栈深如何，一步回到标题
+  w._router.push('SHOP');
+  w._router.push('FISHING', { mapId: 1 });
+  w._router.push('RESULT', { fish, mapId: 1 });
+  w._router.popTo('TITLE');
+  assert.equal(w._router.getCurrentScreen()._type, 'TITLE');
+  assert.equal(w._router.getStackDepth(), 1);
 });
 
 test('地图选择加载 15 张地图并正确解锁', async () => {

@@ -11,11 +11,15 @@
 
 import { Screen } from '../../core/ScreenRouter.js';
 import { exportSave as exportSaveData, deleteSave as deleteSaveData } from '../../core/SaveManager.js';
+import { MAX_LEVEL } from '../../systems/EconomyManager.js';
 
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
 /** 音量步进 */
 const VOL_STEP = 0.1;
+
+/** 开发者模式赠送金币 */
+const DEV_MODE_GOLD = 99999;
 
 class SettingsScreen extends Screen {
   constructor(router) {
@@ -89,8 +93,14 @@ class SettingsScreen extends Screen {
     this._drawVolumeRow(ctx, cx, rowY0, rowH, '音乐 (BGM)', this._bgmVolume);
     this._drawVolumeRow(ctx, cx, rowY0 + rowH + rowGap, rowH, '音效 (SFX)', this._sfxVolume);
 
+    // 开发者模式按钮
+    const devY = rowY0 + (rowH + rowGap) * 2 + 14;
+    const devW = 320;
+    this._drawBtn(ctx, cx - devW / 2, devY, devW, 46,
+      '⚡ 开发者模式（满级 + 99999 金币）', '#4a3a10', '#6a5518');
+
     // 存档管理
-    const btnY = rowY0 + (rowH + rowGap) * 2 + 24;
+    const btnY = devY + 46 + 22;
     const btnW = 200;
     const btnH = 44;
     this._drawBtn(ctx, cx - btnW - 12, btnY, btnW, btnH, '导出存档', '#2a4a5a', '#3a6a7a');
@@ -236,12 +246,35 @@ class SettingsScreen extends Screen {
     this._addClickRegion(barX + barW + 12, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', -VOL_STEP));
     this._addClickRegion(barX + barW + 46, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', VOL_STEP));
 
+    // 开发者模式按钮
+    const devY = rowY0 + (rowH + rowGap) * 2 + 14;
+    const devW = 320;
+    this._addClickRegion(cx - devW / 2, devY, devW, 46, () => this._doDevMode());
+
     // 存档管理按钮
-    const btnY = rowY0 + (rowH + rowGap) * 2 + 24;
+    const btnY = devY + 46 + 22;
     const btnW = 200;
     const btnH = 44;
     this._addClickRegion(cx - btnW - 12, btnY, btnW, btnH, () => this._doExport());
     this._addClickRegion(cx + 12, btnY, btnW, btnH, () => this._doDelete());
+  }
+
+  /**
+   * 开发者模式：一键升至满级并赠送 99999 金币
+   * @private
+   */
+  _doDevMode() {
+    const eco = window._economy;
+    if (!eco) return;
+    eco.restoreState({
+      level: MAX_LEVEL,
+      xp: 0,
+      gold: DEV_MODE_GOLD,
+      stats: eco.getStats(),
+    });
+    if (window._persist) window._persist();
+    this._setStatus('开发者模式：已升至 Lv.' + MAX_LEVEL + '，金币 ' + DEV_MODE_GOLD);
+    if (DEBUG) console.log('[Settings] 开发者模式已启用');
   }
 
   /**
