@@ -52,6 +52,7 @@ class BossBattleScreen extends Screen {
       noteDensityMult: boss.noteDensityMult,
       trait: boss.trait,
       skill: boss.skill,
+      isBoss: true, // 使用 Boss 复杂键型库（用户需求）
     };
     const equip = window._equipmentManager ? window._equipmentManager.getTotalStats() : null;
     // 读取设置：难度模式（默认轻松）与显示模式（默认横板）

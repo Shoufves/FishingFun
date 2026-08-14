@@ -3,14 +3,13 @@
 /**
  * ============================================================
  * src/ui/CatchUI.js — 收线搏鱼 UI 渲染
- * 版本: 1.3
+ * 版本: 1.4
  * 职责: 绘制双耐力条、判定轨道、标记、反馈特效
  * 约定: 纯绘制，不包含业务逻辑
  * ============================================================
  */
 
-/** @type {number} 键从右边缘到目标区的视觉旅行时间（ms），横竖屏统一 */
-const NOTE_TRAVEL_VISUAL_MS = 1500;
+import { NOTE_TRAVEL_VISUAL_MS } from '../fishing/CatchSystem.js';
 
 class CatchUI {
   constructor() {
@@ -230,13 +229,19 @@ class CatchUI {
       ctx.fillRect(0, 0, w, h);
     }
 
-    // 布局：竖条宽=26（同横板条高），轨道宽=28（同横板轨道高），大小不变
+    // 布局：竖条宽=26（同横板条高），轨道宽=28（同横板轨道高）
+    // 长度与横板一致：复用横板分支的轨道长公式（同一窗口下两种模式等长），
+    // 不再撑满屏幕高度（用户反馈 bug 3：竖版条/轨道比横板长太多）
     const barW = 26;
     const trackW = 28;
-    const topY = 66;
-    const bottomY = h - 48;
-    const barH = bottomY - topY;
-    const trackH = barH;
+    const playLen = Math.max(120, Math.min(420, h - 114,
+      (h > w)
+        ? Math.max(220, w * 0.86)
+        : Math.max(240, (w - 160) * 0.62)));
+    const topY = Math.max(66, Math.round((h - playLen) / 2));
+    const bottomY = topY + playLen;
+    const barH = playLen;
+    const trackH = playLen;
 
     const trackX = (w - trackW) / 2;
     const playerX = trackX - 8 - barW;
@@ -352,6 +357,11 @@ class CatchUI {
       ctx.fillText(state.combo + 'x', trackX + trackW + 8, targetY);
     }
 
+    // 浮动伤害数字（从鱼条旁弹出；旧版竖版漏画——用户反馈 bug 2）
+    if (state.floatingTexts && state.floatingTexts.length > 0) {
+      this._drawPortraitFloatingDamage(ctx, fishX + barW + 2, topY + barH * 0.3, state.floatingTexts);
+    }
+
     // Boss 技能警告（顶部）
     if (state.bossSkill && state.bossSkill.active) {
       const flash = Math.floor(Date.now() / 200) % 2 === 0;
@@ -412,6 +422,39 @@ class CatchUI {
   }
 
   /**
+   * 竖版浮动伤害数字（从鱼条右侧弹出，性能同横板：最多 4 个、无每帧分配）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} baseX - 鱼条右缘 X
+   * @param {number} baseY - 弹出起点 Y
+   * @param {Array} texts - 浮动文字列表
+   * @private
+   */
+  _drawPortraitFloatingDamage(ctx, baseX, baseY, texts) {
+    let count = 0;
+    for (const ft of texts) {
+      if (ft.timer <= 0) continue;
+      if (count >= 4) break;
+      count++;
+
+      const alpha = Math.min(1, ft.timer / 350);
+      const t = 1 - ft.timer / 800;
+      const arcX = baseX - t * 80;
+      const arcY = baseY - Math.sin(t * Math.PI) * 46;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 26px Consolas,"Courier New",monospace';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillText(ft.text, arcX + 2, arcY + 2);
+      ctx.fillStyle = ft.color || '#e06050';
+      ctx.fillText(ft.text, arcX, arcY);
+      ctx.restore();
+    }
+  }
+
+  /**
    * 竖版 hold 长按键（垂直长条：头部在按下点，尾部向下延伸/收拢）
    * @param {CanvasRenderingContext2D} ctx
    * @param {Object} note
@@ -432,9 +475,10 @@ class CatchUI {
     const tailProgress = Math.max(0, 1 - tailTimeLeft / NOTE_TRAVEL_VISUAL_MS);
     const tailY = trackY + tailProgress * visibleRange;
 
-    // 长条范围：头判后头部锁定目标区，尾部从上方收拢
-    let startY = active ? targetY : headY;
-    let endY = active ? tailY : Math.max(headY, tailY);
+    // 长条范围：头判前 [尾部(上) → 头部(下)]；头判后 [尾部(上) → 目标区(下)]
+    // 旧 bug: 头判前 startY=headY、endY=max(headY,tailY)=headY → 高度为 0 不显示
+    let startY = active ? tailY : Math.min(headY, tailY);
+    let endY = active ? targetY : Math.max(headY, tailY);
     startY = Math.max(startY, trackY + 2);
     endY = Math.min(endY, trackY + trackH - 2);
 

@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * ============================================================
@@ -6,6 +6,7 @@
  * 版本: 3.0 (Boss 模式支持)
  * 职责: 双耐力管理、判定标记生成与移动、伤害计算、狂暴与连击、Boss 特性/技能
  * 键型: tap(单点) / hold(长按) / double(双连击) / triplet(三连滚奏) / accel(变速段)
+ * Boss 键型: 复杂键型库 BOSS_PATTERN_LIB（trill/burst4/stream6/dblStream/streamHold/mixed/stair）
  * 约定: 纯逻辑，不依赖 UI 或渲染代码
  * ============================================================
  */
@@ -19,6 +20,9 @@ const TRACK_WIDTH = 400;
 
 /** @type {number} 每个标记到达目标区所需时间（ms） */
 const NOTE_TRAVEL_TIME = 2000;
+
+/** @type {number} 键从轨道起点到目标区的视觉旅行时间（ms），横竖屏统一（CatchUI 共用） */
+const NOTE_TRAVEL_VISUAL_MS = 1500;
 
 /** @type {number} 准备时间（ms），第一个标记开始移动前 */
 const PREP_TIME = 1500;
@@ -70,6 +74,37 @@ const TAIL_DMG_MULT = Object.freeze({
   good: 0.3,
   miss: 0,
 });
+
+/* ============================================================
+   Boss 复杂键型库（用户需求：参考 1K 音游如太鼓达人的时间结构）
+   ============================================================ */
+
+/**
+ * 由间隔数组生成连续 tap 节拍
+ * @param {number[]} gaps - gaps[i] = 第 i 个 tap 与第 i+1 个 tap 的间隔(ms)
+ * @returns {Array<{gap:number,type:string}>}
+ */
+function makeTapBeats(gaps) {
+  const beats = [{ gap: 0, type: 'tap' }];
+  for (const gap of gaps) beats.push({ gap, type: 'tap' });
+  return beats;
+}
+
+/**
+ * Boss 键型库：每条 = { name, beats }，beats[i] = { gap, type, dur? }
+ * gap = 距上一节拍开始的时间(ms)；type = 'tap'|'hold'；hold 键 dur = 时长(ms)
+ * 用户示例: 'xx xx xx' 三组二连弹；'xxxxxx xxxxxx' 两组六连；'xx x xx x xxxxxx|-----' 组合+长按
+ * 注: hold 只允许出现在键型末尾（单键输入下，长按期间无法再点按）
+ */
+const BOSS_PATTERN_LIB = Object.freeze([
+  { name: 'trill',      beats: makeTapBeats([110, 240, 110, 240, 110]) }, // xx xx xx
+  { name: 'burst4',     beats: makeTapBeats([115, 115, 115]) },           // xxxx
+  { name: 'stream6',    beats: makeTapBeats([110, 110, 110, 110, 110]) }, // xxxxxx
+  { name: 'dblStream',  beats: makeTapBeats([110, 110, 110, 110, 110, 320, 110, 110, 110, 110, 110]) }, // xxxxxx xxxxxx
+  { name: 'streamHold', beats: makeTapBeats([110, 110, 110, 110, 110]).concat([{ gap: 260, type: 'hold', dur: 700 }]) }, // xxxxxx|-----
+  { name: 'mixed',      beats: makeTapBeats([110, 240, 110, 240, 240, 115, 115, 115, 115, 115, 115]).concat([{ gap: 260, type: 'hold', dur: 750 }]) }, // xx x xx x xxxxxx|-----
+  { name: 'stair',      beats: makeTapBeats([180, 120, 240, 110, 200, 130]) }, // 变速楼梯
+]);
 
 import {
   calcFishStamina,
@@ -310,15 +345,18 @@ class CatchSystem {
     this._baseDamage = calcBaseDamage(eq.rod.strength, eq.hook.sharpness, eq.reel.gearRatio, eq.line.tensile);
 
     // 标记参数（FormulaSheet calcMarkerCount/Speed/Interval；Boss 键型更密集）
-    const noteCount = calcMarkerCount(fp, ra);
+    // 键表一次性覆盖整场战斗：按"所需命中次数"估算（75% 平均伤害效率 ×1.3 余量），
+    // 避免战斗中途补充键在屏幕中间"突然冒出"（用户反馈 bug 5）
+    const hitsNeeded = Math.ceil(this._fishStamina.max / Math.max(1, this._baseDamage * 0.75));
+    const noteCount = Math.max(calcMarkerCount(fp, ra), Math.ceil(hitsNeeded * 1.3));
     this._noteInterval = calcMarkerInterval(fp, eq.reel.gearRatio);
     if (fish.noteDensityMult) {
       this._noteInterval = this._noteInterval * fish.noteDensityMult;
     }
     this._noteSpeed = calcMarkerSpeed(fp, ra, eq.reel.gearRatio);
 
-    // 生成标记（含复杂键型）
-    this._notes = this._buildNotes(fp, ra, noteCount);
+    // 生成标记（含复杂键型；Boss 使用专用复杂键型库）
+    this._notes = this._buildNotes(fp, ra, noteCount, !!fish.isBoss);
 
     // 预生成备用键池（_extendNotes 取用，避免运行期 new / splice 主数组）
     const spareCount = 40;
@@ -351,11 +389,13 @@ class CatchSystem {
    * 生成标记序列（tap 为主，按复杂度插入 hold/double/triplet/accel）
    * @param {number} fp - 挣扎强度
    * @param {number} ra - 稀有度
-   * @param {number} noteCount - 基础标记数
+   * @param {number} noteCount - 最少标记数
+   * @param {boolean} [isBoss=false] - Boss 战使用复杂键型库
    * @returns {CatchNote[]}
    * @private
    */
-  _buildNotes(fp, ra, noteCount) {
+  _buildNotes(fp, ra, noteCount, isBoss) {
+    if (isBoss) return this._buildBossNotes(fp, ra, noteCount);
     const complexity = Math.min(1, (fp + ra) / 20);
     const notes = [];
     let t = PREP_TIME;
@@ -401,6 +441,41 @@ class CatchSystem {
       }
     }
 
+    return notes;
+  }
+
+  /**
+   * 生成 Boss 键表：轮换复杂键型（1K 音游式），直到覆盖所需标记数
+   * 键型之间留呼吸间隔（间隔 ×1.2），避免连成一片
+   * @param {number} fp - 挣扎强度
+   * @param {number} ra - 稀有度
+   * @param {number} noteCount - 最少标记数
+   * @returns {CatchNote[]}
+   * @private
+   */
+  _buildBossNotes(fp, ra, noteCount) {
+    const notes = [];
+    const lib = BOSS_PATTERN_LIB;
+    let t = PREP_TIME;
+    let lastIndex = -1;
+    while (notes.length < noteCount) {
+      // 随机选键型，且不与上一个重复（保证多样性）
+      let idx = Math.floor(Math.random() * lib.length);
+      if (idx === lastIndex && lib.length > 1) {
+        idx = (idx + 1 + Math.floor(Math.random() * (lib.length - 1))) % lib.length;
+      }
+      lastIndex = idx;
+      const pattern = lib[idx];
+      for (const beat of pattern.beats) {
+        const dur = (beat.type === 'hold')
+          ? (beat.dur || HOLD_MIN_MS + fp * HOLD_PER_FP_MS)
+          : 0;
+        notes.push(new CatchNote(notes.length, t + beat.gap, this._noteSpeed, beat.type, dur));
+      }
+      const lastBeat = pattern.beats[pattern.beats.length - 1];
+      const patternEnd = t + lastBeat.gap + (lastBeat.type === 'hold' ? lastBeat.dur : 0);
+      t = patternEnd + this._noteInterval * 1.2;
+    }
     return notes;
   }
 
@@ -507,9 +582,12 @@ class CatchSystem {
     const lastIdx = this._notes.length - 1;
     if (lastIdx < 0 || this._currentNoteIdx >= lastIdx - 2) {
       const baseIdx = this._notes.length;
+      // 新键必须从轨道起点进入（timeLeft ≥ 视觉旅行时间+缓冲），
+      // 否则补充键会在屏幕中间"突然冒出"（用户反馈 bug 5）
+      const minNext = this._elapsed + NOTE_TRAVEL_VISUAL_MS + 50;
       const nextTime = lastIdx >= 0
-        ? Math.max(this._elapsed + 500, this._notes[lastIdx].expectedTime + this._noteInterval)
-        : this._elapsed + 1000;
+        ? Math.max(minNext, this._notes[lastIdx].expectedTime + this._noteInterval)
+        : minNext;
       // 狂暴阶段补充键更密集（spec 2.3.6: 狂暴间隔缩短 25%）
       const step = this._isRaging ? this._noteInterval * 0.75 : this._noteInterval;
       const count = 5;
@@ -1098,7 +1176,9 @@ export {
   CatchNote,
   TRACK_WIDTH,
   NOTE_TRAVEL_TIME,
+  NOTE_TRAVEL_VISUAL_MS,
   HOLD_MIN_MS,
   HOLD_WINDOW_MS,
   TAIL_DMG_MULT,
+  BOSS_PATTERN_LIB,
 };

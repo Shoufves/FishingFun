@@ -7,7 +7,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CatchSystem, CatchNote, HOLD_WINDOW_MS } from '../../src/fishing/CatchSystem.js';
+import {
+  CatchSystem,
+  CatchNote,
+  HOLD_WINDOW_MS,
+  NOTE_TRAVEL_VISUAL_MS,
+  BOSS_PATTERN_LIB,
+} from '../../src/fishing/CatchSystem.js';
 import { calcMarkerInterval, calcMarkerCount } from '../../src/fishing/FormulaSheet.js';
 
 /** Boss 测试鱼（需求2） */
@@ -36,7 +42,11 @@ test('耐力与伤害基础值正确', () => {
   const state = cs.getState();
   assert.equal(state.fishStamina.max, 580);   // 3×60+2×150+100
   assert.equal(state.playerStamina.max, 235);  // 50×1.5+20×4+50×0.6+50
-  assert.equal(state.notes.length, 9);         // 4+floor(4.5)+floor(1)
+  // 键表按"整场战斗所需命中数"预生成（约 21 次命中 ×1.3 余量），且 ≥ 公式基础数量
+  const hits = Math.ceil(580 / (cs.getBaseDamage() * 0.75));
+  assert.ok(state.notes.length >= Math.ceil(hits * 1.3),
+    '键表应覆盖整场战斗所需命中数，实际 ' + state.notes.length + ' < ' + Math.ceil(hits * 1.3));
+  assert.ok(state.notes.length >= 9, '标记数应 ≥ 公式基础数量(9)');
 });
 
 test('Perfect 命中: 鱼耐力减全额伤害，玩家不掉耐', () => {
@@ -523,4 +533,99 @@ test('Boss 技能判定逻辑（immuneGood / immunePerfectOnly）', () => {
   assert.equal(cs3._skillBlocksGrade('perfect'), false);
   assert.equal(cs3._skillBlocksGrade('great'), true);
   assert.equal(cs3._skillBlocksGrade('good'), true);
+});
+
+/* ============================================================
+   键表覆盖整场 + Boss 复杂键型 + 补充键起点（用户反馈 bug 5）
+   ============================================================ */
+
+test('键表覆盖整场战斗: 全程 Perfect 命中直至获胜，中途无需补充键', () => {
+  const cs = new CatchSystem();
+  cs.start(BOSS_FISH);
+  const initialLen = cs._notes.length;
+  const hits = Math.ceil(6000 / (cs.getBaseDamage() * 0.75));
+  assert.ok(initialLen >= Math.ceil(hits * 1.3),
+    'Boss 键表应覆盖所需命中数，实际 ' + initialLen + ' < ' + Math.ceil(hits * 1.3));
+
+  // 模拟全程命中（hold 键额外尾判），战斗结束前键表不得耗尽/补充
+  let guard = 0;
+  while (!cs.isFinished() && guard < 10000) {
+    guard++;
+    const note = cs._notes.find(n => !n.hit && !n.missed);
+    if (!note) break;
+    cs._elapsed = note.expectedTime;
+    const r = cs.handleInput();
+    if (r && r.holdActive) {
+      cs._elapsed = note.expectedTime + note.duration;
+      cs.handleHoldRelease();
+    }
+    cs.update(0); // 触发 _checkAutoMiss / _extendNotes
+  }
+  assert.equal(cs.getResult(), 'win', '全程命中应获胜');
+  assert.equal(cs._notes.length, initialLen,
+    '战斗全程不应补充键（键表已预生成覆盖整场，防屏幕中间突然出键）');
+});
+
+test('补充键从轨道起点进入: 新键 timeLeft ≥ 视觉旅行时间（防中间冒出）', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
+  const before = cs._notes.length;
+  // 强制触发补充（模拟键表耗尽的兜底路径）
+  cs._currentNoteIdx = cs._notes.length - 3;
+  cs._elapsed = cs._notes[cs._notes.length - 1].expectedTime + 300;
+  cs._extendNotes();
+  const added = cs._notes.slice(before);
+  assert.equal(added.length, 5);
+  for (const n of added) {
+    assert.ok(n.expectedTime - cs._elapsed >= NOTE_TRAVEL_VISUAL_MS,
+      '新键应至少有 ' + NOTE_TRAVEL_VISUAL_MS + 'ms 行程从轨道起点进入，实际 ' +
+      (n.expectedTime - cs._elapsed));
+  }
+});
+
+test('Boss 键表使用复杂键型库: 含 hold 组合与 ≤130ms 快速连打段', () => {
+  const cs = new CatchSystem();
+  cs.start(BOSS_FISH);
+  const notes = cs._notes;
+  assert.ok(notes.some(n => n.type === 'hold'), 'Boss 键表应包含 hold 组合键');
+  let minGap = Infinity;
+  for (let i = 1; i < notes.length; i++) {
+    minGap = Math.min(minGap, notes[i].expectedTime - notes[i - 1].expectedTime);
+  }
+  assert.ok(minGap <= 130,
+    '应存在快速连打段（trill/stream ≤130ms），实际最小间隔 ' + minGap + 'ms');
+
+  // 普通鱼不套用 Boss 键型库（保持原有 tap/double/triplet/hold 混合）
+  const cs2 = new CatchSystem();
+  cs2.start(FISH);
+  let minNormal = Infinity;
+  for (let i = 1; i < cs2._notes.length; i++) {
+    minNormal = Math.min(minNormal, cs2._notes[i].expectedTime - cs2._notes[i - 1].expectedTime);
+  }
+  assert.ok(minNormal >= 500,
+    '普通鱼最小间隔应 ≥ 500ms（无 1K 快速键型），实际 ' + minNormal);
+});
+
+test('Boss 键型库结构合法: 全部 beat 时间单调、hold 只在末尾、含用户示例键型', () => {
+  assert.ok(BOSS_PATTERN_LIB.length >= 5, '键型库应 ≥ 5 种');
+  const names = BOSS_PATTERN_LIB.map(p => p.name);
+  assert.ok(names.includes('trill'), '应包含 xx xx xx 二连弹');
+  assert.ok(names.includes('dblStream'), '应包含 xxxxxx xxxxxx 两组纵连');
+  assert.ok(names.includes('mixed'), '应包含 xx x xx x xxxxxx|----- 组合键型');
+  for (const pattern of BOSS_PATTERN_LIB) {
+    let prev = 0;
+    for (let i = 0; i < pattern.beats.length; i++) {
+      const beat = pattern.beats[i];
+      assert.ok(beat.gap >= 0, pattern.name + ' beat[' + i + '] gap 应 ≥ 0');
+      assert.ok(i === 0 ? beat.gap === 0 : beat.gap > 0,
+        pattern.name + ' beat[' + i + '] gap 应为正（首拍除外）');
+      prev += beat.gap;
+      assert.ok(['tap', 'hold'].includes(beat.type), pattern.name + ' beat 类型非法');
+    }
+    // hold 只允许出现在末尾（单键输入下长按期间无法再点按）
+    for (let i = 0; i < pattern.beats.length - 1; i++) {
+      assert.notEqual(pattern.beats[i].type, 'hold',
+        pattern.name + ' hold 只允许出现在键型末尾');
+    }
+  }
 });

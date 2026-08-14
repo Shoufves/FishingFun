@@ -49,6 +49,40 @@ function makeCtxMock() {
   });
 }
 
+/** 记录 fillRect 调用的 Canvas 上下文代理 */
+function makeRecCtx(rects) {
+  const gradient = { addColorStop() {} };
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === 'measureText') return () => ({ width: 10 });
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient') {
+        return () => gradient;
+      }
+      if (prop === 'fillRect') return (x, y, w, h) => { rects.push({ x, y, w, h }); };
+      if (typeof prop === 'string') return () => undefined;
+      return undefined;
+    },
+    set() { return true; },
+  });
+}
+
+/** 记录 fillText 调用的 Canvas 上下文代理 */
+function makeTextCtx(texts) {
+  const gradient = { addColorStop() {} };
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === 'measureText') return () => ({ width: 10 });
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient') {
+        return () => gradient;
+      }
+      if (prop === 'fillText') return (text) => { texts.push({ text }); };
+      if (typeof prop === 'string') return () => undefined;
+      return undefined;
+    },
+    set() { return true; },
+  });
+}
+
 /** 元素 mock */
 function makeElementMock() {
   return {
@@ -367,4 +401,71 @@ test('全部屏幕 render 不抛错（含各阶段）', async () => {
   }
 
   assert.ok(true);
+});
+
+/* ============================================================
+   竖版渲染修复回归（用户反馈 bug 1/2/3）
+   ============================================================ */
+
+test('竖版与横板: 轨道长度一致（同一窗口两模式等长，不撑满屏幕）', async () => {
+  const { } = await setup();
+  const rects = [];
+  const recCtx = makeRecCtx(rects);
+  const cs = new CatchSystem();
+  cs.start({ fishId: 9, fishName: '金枪鱼', rarity: 8, fightPower: 9 });
+  const ui = new CatchUI();
+
+  // 400×800（竖屏比例）: 横板轨道 = max(220, 400×0.86) = 344 宽 × 28 高
+  const expectLen = Math.max(220, 400 * 0.86); // 344
+  const origCreate = globalThis.document.createElement;
+  globalThis.document.createElement = () => ({ getContext: () => recCtx, style: {}, width: 0, height: 0 });
+  try {
+    ui.render(recCtx, 400, 800, cs.getState());
+  } finally {
+    globalThis.document.createElement = origCreate;
+  }
+  const landTrack = rects.find(r => r.w === expectLen && r.h === 28);
+  assert.ok(landTrack, '横板轨道应为 ' + expectLen + '×28，实际: ' + JSON.stringify(rects.slice(0, 8)));
+
+  // 竖版：轨道 = 28 × 344（与横板同长，不撑满 h-114=686）
+  rects.length = 0;
+  ui.render(recCtx, 400, 800, cs.getState(), 'portrait');
+  const portTrack = rects.find(r => r.w === 28 && r.h === expectLen);
+  assert.ok(portTrack, '竖版轨道应为 28×' + expectLen + '（与横板同长）');
+  assert.ok(!rects.some(r => r.w === 28 && r.h >= 680),
+    '竖版轨道不应撑满屏幕高度（旧值 h-114=686）');
+  // 竖版耐力条与轨道同长
+  assert.ok(rects.some(r => r.w === 26 && r.h === expectLen),
+    '竖版耐力条长度应与轨道一致（' + expectLen + 'px）');
+});
+
+test('竖版模式渲染浮动伤害数字（旧版漏画）', async () => {
+  const { } = await setup();
+  const texts = [];
+  const recCtx = makeTextCtx(texts);
+  const cs = new CatchSystem();
+  cs.start({ fishId: 9, fishName: '金枪鱼', rarity: 8, fightPower: 9 });
+  cs._floatingTexts.push({ text: '-999', color: '#40d080', timer: 500, y: 0 });
+  const ui = new CatchUI();
+  ui.render(recCtx, 400, 800, cs.getState(), 'portrait');
+  assert.ok(texts.some(t => t.text === '-999'), '竖版应绘制浮动伤害数字');
+});
+
+test('竖版 hold 头判前长条可见（旧版高度为 0 不显示）', async () => {
+  const { } = await setup();
+  const rects = [];
+  const recCtx = makeRecCtx(rects);
+  const cs = new CatchSystem();
+  cs.start({ fishId: 9, fishName: '金枪鱼', rarity: 8, fightPower: 9 });
+  // 第一个键改造成 hold（头判前、飞行中段：头部 400ms 后到目标区）
+  const n = cs._notes[0];
+  n.type = 'hold';
+  n.duration = 800;
+  cs._elapsed = n.expectedTime - 400;
+  const ui = new CatchUI();
+  ui.render(recCtx, 400, 800, cs.getState(), 'portrait');
+  // hold 长条宽 = trackW-6 = 22，高度应明显大于头部亮块(4px)
+  const holdBars = rects.filter(r => r.w === 22 && r.h > 40);
+  assert.ok(holdBars.length >= 1,
+    '头判前 hold 长条应被绘制，实际: ' + JSON.stringify(rects.slice(0, 12)));
 });
