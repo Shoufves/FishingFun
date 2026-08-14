@@ -10,7 +10,11 @@
  */
 
 import { Screen } from '../../core/ScreenRouter.js';
-import { exportSave as exportSaveData, deleteSave as deleteSaveData } from '../../core/SaveManager.js';
+import {
+  exportSave as exportSaveData,
+  deleteSave as deleteSaveData,
+  importSave as importSaveData,
+} from '../../core/SaveManager.js';
 import { MAX_LEVEL } from '../../systems/EconomyManager.js';
 
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
@@ -99,12 +103,15 @@ class SettingsScreen extends Screen {
     this._drawBtn(ctx, cx - devW / 2, devY, devW, 46,
       '⚡ 开发者模式（满级 + 99999 金币）', '#4a3a10', '#6a5518');
 
-    // 存档管理（两个按钮并排，窄屏时压缩宽度）
+    // 存档管理（三按钮一行，宽度自适应）
     const btnY = devY + 46 + 22;
-    const btnW = Math.min(200, (w - 40 - 12) / 2);
+    const btnGap = 8;
+    const btnW = Math.min(180, (w - 40 - btnGap * 2) / 3);
     const btnH = 44;
-    this._drawBtn(ctx, cx - btnW - 6, btnY, btnW, btnH, '导出存档', '#2a4a5a', '#3a6a7a');
-    this._drawBtn(ctx, cx + 6, btnY, btnW, btnH, '删除存档', '#5a2a2a', '#7a3a3a');
+    const btnX0 = cx - (btnW * 3 + btnGap * 2) / 2;
+    this._drawBtn(ctx, btnX0, btnY, btnW, btnH, '导入存档', '#2a4a5a', '#3a6a7a');
+    this._drawBtn(ctx, btnX0 + btnW + btnGap, btnY, btnW, btnH, '导出存档', '#2a4a5a', '#3a6a7a');
+    this._drawBtn(ctx, btnX0 + (btnW + btnGap) * 2, btnY, btnW, btnH, '删除存档', '#5a2a2a', '#7a3a3a');
 
     // 状态提示
     if (this._statusText) {
@@ -277,12 +284,15 @@ class SettingsScreen extends Screen {
     const devW = Math.min(320, w - 24);
     this._addClickRegion(cx - devW / 2, devY, devW, 46, () => this._doDevMode());
 
-    // 存档管理按钮（窄屏时压缩宽度）
+    // 存档管理按钮（三按钮一行）
     const btnY = devY + 46 + 22;
-    const btnW = Math.min(200, (w - 40 - 12) / 2);
+    const btnGap = 8;
+    const btnW = Math.min(180, (w - 40 - btnGap * 2) / 3);
     const btnH = 44;
-    this._addClickRegion(cx - btnW - 6, btnY, btnW, btnH, () => this._doExport());
-    this._addClickRegion(cx + 6, btnY, btnW, btnH, () => this._doDelete());
+    const btnX0 = cx - (btnW * 3 + btnGap * 2) / 2;
+    this._addClickRegion(btnX0, btnY, btnW, btnH, () => this._doImport());
+    this._addClickRegion(btnX0 + btnW + btnGap, btnY, btnW, btnH, () => this._doExport());
+    this._addClickRegion(btnX0 + (btnW + btnGap) * 2, btnY, btnW, btnH, () => this._doDelete());
   }
 
   /**
@@ -339,6 +349,77 @@ class SettingsScreen extends Screen {
       this._setStatus('导出失败，请查看控制台');
       if (DEBUG) console.warn('[Settings] 导出失败:', e.message);
     }
+  }
+
+  /**
+   * 导入存档：弹出 DOM 模态，粘贴 JSON 后校验并覆盖当前存档
+   * @private
+   */
+  _doImport() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+      'position:fixed;inset:0;background:rgba(0,0,0,0.72);' +
+      'display:flex;align-items:center;justify-content:center;z-index:100;';
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    const panel = document.createElement('div');
+    panel.style.cssText =
+      'background:#1a2a3a;border:2px solid #3a5a6a;padding:16px;' +
+      'width:min(92vw,440px);border-radius:4px;box-sizing:border-box;';
+
+    const title = document.createElement('div');
+    title.textContent = '\u5BFC\u5165\u5B58\u6863 \u2014 \u7C98\u8D34\u5B58\u6863 JSON';
+    title.style.cssText =
+      'color:#f0e6c0;font:bold 14px Consolas,monospace;margin-bottom:8px;';
+
+    const ta = document.createElement('textarea');
+    ta.style.cssText =
+      'width:100%;height:150px;background:#0e1e2e;color:#c8d8d8;' +
+      'font:12px Consolas,monospace;border:1px solid #3a5a6a;resize:vertical;' +
+      'box-sizing:border-box;padding:6px;';
+    ta.placeholder = '\u7C98\u8D34\u4ECE\u201C\u5BFC\u51FA\u5B58\u6863\u201D\u590D\u5236\u7684 JSON \u5185\u5BB9...';
+
+    const err = document.createElement('div');
+    err.style.cssText =
+      'color:#e06050;font:12px Consolas,monospace;margin-top:8px;min-height:16px;';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'margin-top:10px;display:flex;gap:8px;justify-content:flex-end;';
+
+    const btnImport = document.createElement('button');
+    btnImport.textContent = '\u5BFC\u5165\u5E76\u8986\u76D6';
+    const btnCancel = document.createElement('button');
+    btnCancel.textContent = '\u53D6\u6D88';
+    for (const b of [btnImport, btnCancel]) {
+      b.style.cssText =
+        'background:#2a5a6a;color:#f0e6c0;border:none;padding:8px 14px;' +
+        'font:bold 13px Consolas,monospace;border-radius:3px;cursor:pointer;';
+    }
+
+    btnImport.addEventListener('click', () => {
+      const text = ta.value.trim();
+      if (!text) {
+        err.textContent = '\u8BF7\u5148\u7C98\u8D34\u5B58\u6863\u5185\u5BB9';
+        return;
+      }
+      const result = importSaveData(text);
+      if (!result.ok) {
+        err.textContent = result.error || '\u5BFC\u5165\u5931\u8D25';
+        return;
+      }
+      overlay.remove();
+      this._setStatus('\u5BFC\u5165\u6210\u529F\uFF0C\u6B63\u5728\u91CD\u65B0\u52A0\u8F7D...');
+      setTimeout(() => { window.location.reload(); }, 800);
+    });
+    btnCancel.addEventListener('click', () => { overlay.remove(); });
+
+    btnRow.append(btnImport, btnCancel);
+    panel.append(title, ta, err, btnRow);
+    overlay.append(panel);
+    document.body.appendChild(overlay);
+    ta.focus();
   }
 
   /** 删除存档 */

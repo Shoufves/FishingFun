@@ -271,6 +271,30 @@ function saveWithThrottle(data, delay = 2000) {
   }, delay);
 }
 
+/**
+ * 导入存档（从 JSON 字符串恢复）
+ * 校验: JSON 可解析 + 关键字段完整（同 load 的校验规则）
+ * @param {string} jsonString - 存档 JSON 文本（兼容格式化/单行）
+ * @returns {{ok:boolean, error?:string}} 导入结果
+ */
+function importSave(jsonString) {
+  let data;
+  try {
+    data = JSON.parse(jsonString);
+  } catch (err) {
+    return { ok: false, error: 'JSON 解析失败：' + err.message };
+  }
+  if (!_isValidSaveData(data)) {
+    return { ok: false, error: '存档格式不正确（缺少关键字段）' };
+  }
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: '写入失败：' + err.message };
+  }
+}
+
 /* ============================================================
    FUTURE: 云存档桩（Phase 6 T-030，等待 v2 实现）
    ============================================================ */
@@ -299,6 +323,7 @@ export {
   load,
   deleteSave,
   exportSave,
+  importSave,
   saveWithThrottle,
   syncToCloud,
   syncFromCloud,
