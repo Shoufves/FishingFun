@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * ============================================================
@@ -430,19 +430,20 @@ class SettingsScreen extends Screen {
     this._saveSettings();
   }
 
-  /** 导出存档到剪贴板 */
+  /** 导出存档：下载 JSON 文件（避免剪贴板长度限制截断） */
   _doExport() {
     try {
       const json = exportSaveData();
-      const ta = document.createElement('textarea');
-      ta.value = json;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      this._setStatus('存档已导出（JSON 已复制到剪贴板）');
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'angler_save_' + Date.now() + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => { URL.revokeObjectURL(url); }, 2000);
+      this._setStatus('存档已导出为 angler_save_*.json 文件');
     } catch (e) {
       this._setStatus('导出失败，请查看控制台');
       if (DEBUG) console.warn('[Settings] 导出失败:', e.message);
@@ -450,7 +451,7 @@ class SettingsScreen extends Screen {
   }
 
   /**
-   * 导入存档：弹出 DOM 模态，粘贴 JSON 后校验并覆盖当前存档
+   * 导入存档：DOM 模态，支持选择 JSON 文件 或 粘贴文本
    * @private
    */
   _doImport() {
@@ -468,20 +469,57 @@ class SettingsScreen extends Screen {
       'width:min(92vw,440px);border-radius:4px;box-sizing:border-box;';
 
     const title = document.createElement('div');
-    title.textContent = '\u5BFC\u5165\u5B58\u6863 \u2014 \u7C98\u8D34\u5B58\u6863 JSON';
+    title.textContent = '\u5BFC\u5165\u5B58\u6863';
     title.style.cssText =
       'color:#f0e6c0;font:bold 14px Consolas,monospace;margin-bottom:8px;';
-
-    const ta = document.createElement('textarea');
-    ta.style.cssText =
-      'width:100%;height:150px;background:#0e1e2e;color:#c8d8d8;' +
-      'font:12px Consolas,monospace;border:1px solid #3a5a6a;resize:vertical;' +
-      'box-sizing:border-box;padding:6px;';
-    ta.placeholder = '\u7C98\u8D34\u4ECE\u201C\u5BFC\u51FA\u5B58\u6863\u201D\u590D\u5236\u7684 JSON \u5185\u5BB9...';
 
     const err = document.createElement('div');
     err.style.cssText =
       'color:#e06050;font:12px Consolas,monospace;margin-top:8px;min-height:16px;';
+
+    // 文件选择（首选）
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json,application/json,text/plain';
+    fileInput.style.display = 'none';
+    const btnFile = document.createElement('button');
+    btnFile.textContent = '\u9009\u62E9 JSON \u6587\u4EF6';
+    btnFile.style.cssText =
+      'background:#2a5a6a;color:#f0e6c0;border:none;padding:10px 16px;' +
+      'font:bold 14px Consolas,monospace;border-radius:3px;cursor:pointer;' +
+      'width:100%;margin-bottom:10px;';
+    btnFile.addEventListener('click', () => { fileInput.click(); });
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = importSaveData(String(reader.result || ''));
+        if (!result.ok) {
+          err.textContent = result.error || '\u5BFC\u5165\u5931\u8D25';
+          return;
+        }
+        overlay.remove();
+        this._setStatus('\u5BFC\u5165\u6210\u529F\uFF0C\u6B63\u5728\u91CD\u65B0\u52A0\u8F7D...');
+        setTimeout(() => { window.location.reload(); }, 800);
+      };
+      reader.onerror = () => {
+        err.textContent = '\u6587\u4EF6\u8BFB\u53D6\u5931\u8D25';
+      };
+      reader.readAsText(file);
+    });
+
+    const sep = document.createElement('div');
+    sep.textContent = '\u2014\u2014 \u6216\u7C98\u8D34\u6587\u672C \u2014\u2014';
+    sep.style.cssText =
+      'color:#5a7a8a;font:12px Consolas,monospace;text-align:center;margin:4px 0 8px;';
+
+    const ta = document.createElement('textarea');
+    ta.style.cssText =
+      'width:100%;height:120px;background:#0e1e2e;color:#c8d8d8;' +
+      'font:12px Consolas,monospace;border:1px solid #3a5a6a;resize:vertical;' +
+      'box-sizing:border-box;padding:6px;';
+    ta.placeholder = '\u6216\u7C98\u8D34\u5B58\u6863 JSON \u6587\u672C...';
 
     const btnRow = document.createElement('div');
     btnRow.style.cssText = 'margin-top:10px;display:flex;gap:8px;justify-content:flex-end;';
@@ -499,7 +537,7 @@ class SettingsScreen extends Screen {
     btnImport.addEventListener('click', () => {
       const text = ta.value.trim();
       if (!text) {
-        err.textContent = '\u8BF7\u5148\u7C98\u8D34\u5B58\u6863\u5185\u5BB9';
+        err.textContent = '\u8BF7\u5148\u9009\u62E9\u6587\u4EF6\u6216\u7C98\u8D34\u5185\u5BB9';
         return;
       }
       const result = importSaveData(text);
@@ -514,7 +552,7 @@ class SettingsScreen extends Screen {
     btnCancel.addEventListener('click', () => { overlay.remove(); });
 
     btnRow.append(btnImport, btnCancel);
-    panel.append(title, ta, err, btnRow);
+    panel.append(title, btnFile, fileInput, sep, ta, err, btnRow);
     overlay.append(panel);
     document.body.appendChild(overlay);
     ta.focus();

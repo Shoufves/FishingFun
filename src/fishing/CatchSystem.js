@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * ============================================================
@@ -162,6 +162,9 @@ class CatchSystem {
      *  不 splice 主数组——避免破坏 _currentNoteIdx 索引导致判定卡死） */
     this._spareNotes = [];
 
+    /** @type {string} 判定模式（默认轻松） */
+    this._judgeMode = 'easy';
+
     /** @type {Object} 判定窗口（默认轻松模式；start 不会重置） */
     this._judgeWindows = JUDGE_WINDOWS.easy;
 
@@ -244,12 +247,22 @@ class CatchSystem {
 
   /**
    * 设置判定模式（设置页：轻松/困难，默认轻松）
+   * 轻松模式: 判定窗口更宽 + 非 miss 不扣玩家血、perfect 回血（+4%）
    * @param {string} mode - 'easy' | 'hard'
    */
   setJudgeMode(mode) {
     if (JUDGE_WINDOWS[mode]) {
+      this._judgeMode = mode;
       this._judgeWindows = JUDGE_WINDOWS[mode];
     }
+  }
+
+  /**
+   * 当前判定模式
+   * @returns {string}
+   */
+  getJudgeMode() {
+    return this._judgeMode || 'easy';
   }
 
   /**
@@ -666,7 +679,7 @@ class CatchSystem {
 
     // 玩家耐力损失（Boss 特性可能提高）
     const playerDrain = this._getPlayerDrain(grade, this._playerStamina.max);
-    this._playerStamina.current = Math.max(0, this._playerStamina.current - playerDrain);
+    this._applyPlayerDrain(playerDrain);
 
     // Boss 技能免疫（需求2）
     if (this._skillBlocksGrade(grade)) dmg = 0;
@@ -706,7 +719,7 @@ class CatchSystem {
     if (grade === 'miss') {
       this._combo = 0;
       const drain = this._getPlayerDrain('miss', this._playerStamina.max);
-      this._playerStamina.current = Math.max(0, this._playerStamina.current - drain);
+      this._applyPlayerDrain(drain);
     }
     // Boss 技能免疫（需求2）
     if (this._skillBlocksGrade(grade)) dmg = 0;
@@ -782,7 +795,7 @@ class CatchSystem {
 
     // 玩家耐力损失（Boss 特性可能提高）
     const playerDrain = this._getPlayerDrain(grade, this._playerStamina.max);
-    this._playerStamina.current = Math.max(0, this._playerStamina.current - playerDrain);
+    this._applyPlayerDrain(playerDrain);
 
     // Boss 技能免疫（需求2）：技能激活期间对应等级伤害无效
     if (this._skillBlocksGrade(grade)) dmg = 0;
@@ -828,7 +841,7 @@ class CatchSystem {
     this._lastGrade = 'miss';
 
     const drain = this._getPlayerDrain('miss', this._playerStamina.max);
-    this._playerStamina.current = Math.max(0, this._playerStamina.current - drain);
+    this._applyPlayerDrain(drain);
     this._lastDamage = 0;
 
     this._setShake('miss');
@@ -888,24 +901,46 @@ class CatchSystem {
   }
 
   /**
-   * 玩家耐力消耗（spec 2.3.4；Boss 特性可能提高受到的伤害）
+   * 玩家耐力消耗（轻松模式：非 miss 不扣血、perfect 回血 +4%；Boss 特性放大受到的伤害）
    * @param {string} grade
    * @param {number} maxStamina
-   * @returns {number}
+   * @returns {number} 正=扣血，负=回血
    */
   _getPlayerDrain(grade, maxStamina) {
     let drain;
-    switch (grade) {
-      case 'perfect': drain = 0; break;
-      case 'great': drain = maxStamina * 0.02; break;
-      case 'good': drain = maxStamina * 0.05; break;
-      case 'miss': drain = maxStamina * 0.12; break;
-      default: drain = 0; break;
+    if (this._judgeMode === 'easy') {
+      // 轻松模式：miss 扣血，great/good 不扣，perfect 回血 4%
+      switch (grade) {
+        case 'perfect': drain = -maxStamina * 0.04; break;
+        case 'great':
+        case 'good': drain = 0; break;
+        case 'miss': drain = maxStamina * 0.12; break;
+        default: drain = 0; break;
+      }
+    } else {
+      switch (grade) {
+        case 'perfect': drain = 0; break;
+        case 'great': drain = maxStamina * 0.02; break;
+        case 'good': drain = maxStamina * 0.05; break;
+        case 'miss': drain = maxStamina * 0.12; break;
+        default: drain = 0; break;
+      }
     }
-    if (this._bossTrait && this._bossTrait.playerDamageMult) {
+    // Boss 特性只放大"受到的伤害"（正数），回血不受影响
+    if (drain > 0 && this._bossTrait && this._bossTrait.playerDamageMult) {
       drain *= this._bossTrait.playerDamageMult;
     }
     return drain;
+  }
+
+  /**
+   * 应用玩家耐力变化（扣血/回血，钳制到 [0, max]）
+   * @param {number} drain - 正=扣血，负=回血
+   * @private
+   */
+  _applyPlayerDrain(drain) {
+    this._playerStamina.current = Math.min(this._playerStamina.max,
+      Math.max(0, this._playerStamina.current - drain));
   }
 
   /**

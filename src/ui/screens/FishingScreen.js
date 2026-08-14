@@ -366,9 +366,9 @@ class FishingScreen extends Screen {
      ============================================================ */
 
   /** @override */
-  handleClick(mx, my) {
+  handleClick(mx, my, eventStamp) {
     if (super.handleClick(mx, my)) return true;
-    this._handleSpace();
+    this._handleSpace(eventStamp);
     return true;
   }
 

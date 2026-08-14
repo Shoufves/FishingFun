@@ -238,9 +238,9 @@ class CatchUI {
     const barH = bottomY - topY;
     const trackH = barH;
 
-    const playerX = 16;
-    const fishX = w - 16 - barW;
     const trackX = (w - trackW) / 2;
+    const playerX = trackX - 8 - barW;
+    const fishX = trackX + trackW + 8;
     const trackY = topY;
 
     // 目标区在轨道底部

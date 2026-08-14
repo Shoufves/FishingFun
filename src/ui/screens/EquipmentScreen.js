@@ -202,7 +202,7 @@ class EquipmentScreen extends Screen {
     const total = mgr ? mgr.getTotalStats() : {};
     ctx.font = '11px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#4a6a7a';
-    ctx.fillText(this._formatTotalStats(total), 16, statsY);
+    ctx.fillText(this._truncate(ctx, this._formatTotalStats(total), w - 32), 16, statsY);
 
     // 列表
     const listStartY = getRowStartY();
@@ -314,6 +314,25 @@ class EquipmentScreen extends Screen {
     ctx.font = '9px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#6a8a9a';
     ctx.fillText('ATTR ' + attr, x + w / 2, y + 48);
+  }
+
+  /**
+   * 按最大宽度截断文本（超出加省略号）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} text
+   * @param {number} maxWidth
+   * @returns {string}
+   * @private
+   */
+  _truncate(ctx, text, maxWidth) {
+    const str = String(text || '');
+    if (ctx.measureText(str).width <= maxWidth) return str;
+    let out = '';
+    for (const ch of str) {
+      if (ctx.measureText(out + ch + '\u2026').width > maxWidth) break;
+      out += ch;
+    }
+    return out + '\u2026';
   }
 
   /**

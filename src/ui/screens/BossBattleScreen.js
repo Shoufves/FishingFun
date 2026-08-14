@@ -109,10 +109,10 @@ class BossBattleScreen extends Screen {
   }
 
   /** @override */
-  handleClick(mx, my) {
+  handleClick(mx, my, eventStamp) {
     if (super.handleClick(mx, my)) return true;
     if (this._catchSystem && !this._catchSystem.isFinished()) {
-      const r = this._catchSystem.handleInput();
+      const r = this._catchSystem.handleInput(eventStamp);
       if (r && r.grade !== 'miss') {
         this._playSound(r.grade === 'perfect' ? 'perfect' : 'click');
       }

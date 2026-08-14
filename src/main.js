@@ -498,7 +498,7 @@ let _lastTouchAt = 0;
 const TOUCH_CLICK_GUARD_MS = 350;
 
 /** 点击/触摸事件分发到当前屏幕（CSS 像素坐标） */
-function handlePointerDown(clientX, clientY) {
+function handlePointerDown(clientX, clientY, eventStamp) {
   // 首次点击激活音频（遵循浏览器自动播放策略）
   if (!_audioResumed) {
     _audioResumed = true;
@@ -509,7 +509,8 @@ function handlePointerDown(clientX, clientY) {
   const { x, y } = getCanvasCoords(clientX, clientY);
   const screen = router.getCurrentScreen();
   if (screen && typeof screen.handleClick === 'function') {
-    const hit = screen.handleClick(x, y);
+    // 传入事件时间戳 → 音游判定精确（帧率无关）
+    const hit = screen.handleClick(x, y, eventStamp);
     if (hit && audio) audio.playSFX('click', 0.5);
   }
 }
@@ -517,7 +518,7 @@ function handlePointerDown(clientX, clientY) {
 // 鼠标点击（触屏设备上已由 touch 系统处理，350ms 内的合成 click 忽略）
 canvas.addEventListener('click', (e) => {
   if (Date.now() - _lastTouchAt < TOUCH_CLICK_GUARD_MS) return;
-  handlePointerDown(e.clientX, e.clientY);
+  handlePointerDown(e.clientX, e.clientY, e.timeStamp);
 });
 
 /* ============================================================
@@ -610,7 +611,7 @@ canvas.addEventListener('touchstart', (e) => {
   const screen = router ? router.getCurrentScreen() : null;
   if (!screenSupportsScroll(screen)) {
     // 音游/蓄力等游戏内操作：立即响应，避免触屏判定延迟
-    handlePointerDown(touch.clientX, touch.clientY);
+    handlePointerDown(touch.clientX, touch.clientY, touch.timeStamp);
     _pendingClick = null;
   }
 }, { passive: false });
@@ -639,8 +640,10 @@ canvas.addEventListener('touchmove', (e) => {
 canvas.addEventListener('touchend', (e) => {
   e.preventDefault();
   _lastTouchAt = Date.now(); // 忽略随后的合成 click
+  const touch = e.changedTouches[0];
   if (_pendingClick && !_touchMoved) {
-    handlePointerDown(_pendingClick.x, _pendingClick.y);
+    handlePointerDown(_pendingClick.x, _pendingClick.y,
+      touch ? touch.timeStamp : undefined);
   }
   _pendingClick = null;
   if (_touchMoved) {

@@ -268,14 +268,14 @@ class FishDexScreen extends Screen {
     ctx.fillStyle = '#5a7a8a';
     ctx.fillText(caught ? (fish.scientificName || '') : '\u672A\u53D1\u73B0\u7684\u9C7C\u79CD', 16 + (caught ? (fish.fishName.length + 1) * 16 : 40), panelY + 16);
 
-    // 第二行：属性
+    // 第二行：属性（自适应截断，窄屏不超界）
     ctx.font = '12px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#7a9aaa';
     const stars = '\u2605'.repeat(Math.min(10, fish.rarity || 1));
     const base = '稀有度 ' + stars + '  |  ' +
       (fish.category || '') + '  |  ' + (fish.habitatLayer || '') + '  |  ' +
       (fish.minLengthCm || '?') + '~' + (fish.maxLengthCm || '?') + ' cm';
-    ctx.fillText(base, 16, panelY + 40);
+    ctx.fillText(this._truncate(ctx, base, w - 32), 16, panelY + 40);
 
     // 第三行：纪录 + 描述
     ctx.font = '11px Consolas, "Courier New", monospace';
@@ -293,6 +293,25 @@ class FishDexScreen extends Screen {
       ctx.fillStyle = '#8a9aaa';
       this._wrapText(ctx, fish.description, w - 16, panelY + 16, w * 0.55, 13);
     }
+  }
+
+  /**
+   * 按最大宽度截断文本（超出加省略号）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {string} text
+   * @param {number} maxWidth
+   * @returns {string}
+   * @private
+   */
+  _truncate(ctx, text, maxWidth) {
+    const str = String(text || '');
+    if (ctx.measureText(str).width <= maxWidth) return str;
+    let out = '';
+    for (const ch of str) {
+      if (ctx.measureText(out + ch + '\u2026').width > maxWidth) break;
+      out += ch;
+    }
+    return out + '\u2026';
   }
 
   /**

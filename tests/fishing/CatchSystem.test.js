@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * CatchSystem 单元测试（T-009）
@@ -320,6 +320,42 @@ test('判定模式: 默认轻松，轻松比困难更宽松', () => {
   cs2.start(FISH);
   cs2._elapsed = cs2._notes[0].expectedTime + 30;
   assert.equal(cs2.handleInput().grade, 'great', '困难模式 30ms 应为 Great');
+});
+
+test('轻松模式耐力: miss 扣血、great/good 不扣、perfect 回血', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH); // 默认轻松
+  const max = cs.getState().playerStamina.max;
+  cs._notes = cs._notes.slice(0, 4);
+
+  // perfect 回血（满血时不溢出）
+  cs._elapsed = cs._notes[0].expectedTime;
+  cs.handleInput();
+  assert.equal(cs.getState().playerStamina.current, max);
+
+  // 先扣到半血，再 perfect 验证回血 +4%（用第 2 个键）
+  cs._playerStamina.current = max * 0.5;
+  cs._elapsed = cs._notes[1].expectedTime;
+  const rp = cs.handleInput();
+  assert.equal(rp.grade, 'perfect');
+  const healed = max * 0.5 + max * 0.04;
+  assert.ok(Math.abs(cs.getState().playerStamina.current - healed) <= 1,
+    'perfect 应回血 4%');
+
+  // good 不扣血（轻松窗口 good ≤120ms，用第 3 个键）
+  const beforeGood = cs.getState().playerStamina.current;
+  cs._elapsed = cs._notes[2].expectedTime + 100;
+  const r = cs.handleInput();
+  assert.equal(r.grade, 'good');
+  assert.equal(cs.getState().playerStamina.current, beforeGood, '轻松模式 good 不扣血');
+
+  // miss 扣 12%（第 4 个键自动 Miss）
+  cs._elapsed = cs._notes[3].expectedTime + 200;
+  cs.update(0); // 触发自动 Miss
+  const afterMiss = cs.getState().playerStamina.current;
+  const expectedDrain = max * 0.12;
+  assert.ok(Math.abs((beforeGood - afterMiss) - expectedDrain) <= 1,
+    'miss 应扣 12%');
 });
 
 test('补充键后判定连续性: 多次补充不破坏键序列与索引（防卡死回归）', () => {

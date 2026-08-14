@@ -164,21 +164,23 @@ class BossSelectScreen extends Screen {
       ctx.textAlign = 'left';
     }
 
-    // 数值行
+    // 数值行（自适应截断，窄屏不超界）
     ctx.font = '11px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#c8b090';
-    ctx.fillText('\u8840\u91CF ' + boss.baseStamina + '  |  \u4F53\u957F ' + boss.minLengthCm + '~' + boss.maxLengthCm + 'cm  |  \u91CD\u91CF ' + boss.minWeightKg + '~' + boss.maxWeightKg + 'kg  |  \u5956\u52B1 ' + boss.reward + ' \u91D1\u5E01',
-      cx - listW / 2 + 14, y + 38);
+    const numText = '\u8840\u91CF ' + boss.baseStamina +
+      '  |  \u4F53\u957F ' + boss.minLengthCm + '~' + boss.maxLengthCm + 'cm' +
+      '  |  \u91CD\u91CF ' + boss.minWeightKg + '~' + boss.maxWeightKg + 'kg' +
+      '  |  \u5956\u52B1 ' + boss.reward + ' \u91D1\u5E01';
+    ctx.fillText(this._truncate(ctx, numText, listW - 28), cx - listW / 2 + 14, y + 38);
 
-    // 特性
-    ctx.font = '11px Consolas, "Courier New", monospace';
+    // 特性（自适应截断）
     ctx.fillStyle = '#e08060';
-    ctx.fillText('\u7279\u6027[' + boss.trait.name + '] ' + boss.trait.desc,
+    ctx.fillText(this._truncate(ctx, '\u7279\u6027[' + boss.trait.name + '] ' + boss.trait.desc, listW - 28),
       cx - listW / 2 + 14, y + 58);
 
-    // 技能
+    // 技能（自适应截断）
     ctx.fillStyle = '#60a0e0';
-    ctx.fillText('\u6280\u80FD[' + boss.skill.name + '] ' + boss.skill.desc,
+    ctx.fillText(this._truncate(ctx, '\u6280\u80FD[' + boss.skill.name + '] ' + boss.skill.desc, listW - 28),
       cx - listW / 2 + 14, y + 76);
 
     // 描述（截断）
