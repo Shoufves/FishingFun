@@ -222,5 +222,24 @@ test('全部屏幕 render 不抛错（含各阶段）', async () => {
   settings.render(ctx);
   settings.onExit();
 
+  // 竖屏窄窗：设置页渲染不抛错，音量行元素不超出行边界
+  const origW = window.innerWidth;
+  const origH = window.innerHeight;
+  window.innerWidth = 400;
+  window.innerHeight = 800;
+  try {
+    const settingsV = new SettingsScreen(router);
+    settingsV.onEnter();
+    settingsV.render(ctx);
+    const lay = settingsV._volumeLayout(400, 200);
+    assert.ok(lay.barW >= 60, '竖屏音量条宽度不应过窄');
+    assert.ok(lay.btnPlusX + 26 <= lay.rowX + lay.rowW,
+      '加号按钮不应超出音量行右边界');
+    settingsV.onExit();
+  } finally {
+    window.innerWidth = origW;
+    window.innerHeight = origH;
+  }
+
   assert.ok(true);
 });

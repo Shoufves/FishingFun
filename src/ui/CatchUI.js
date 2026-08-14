@@ -189,7 +189,8 @@ class CatchUI {
 
       // hold 长按键：长条渲染，头部在当前 noteX，尾部向右延伸
       if (note.type === 'hold') {
-        this._drawHoldNote(ctx, note, noteX, y, barPad, h, x, w, visibleRange);
+        this._drawHoldNote(ctx, note, noteX, y, barPad, h, x, w,
+          targetX, visibleRange, state.elapsed);
         continue;
       }
 
@@ -222,37 +223,51 @@ class CatchUI {
   }
 
   /**
-   * 绘制 hold 长按键（头部=按下点，向右延伸 duration 对应的长度）
+   * 绘制 hold 长按键（双判定点设计）
+   * - 未头判：长条从头部位置向右延伸至尾部，头部亮块随移动
+   * - 头判后：头部亮块锁定在目标区（按住点），长条 [目标区 → 尾部] 随尾部收拢，
+   *   按住期间持续显示，直到尾判完成（note.hit）后消失
    * @param {CanvasRenderingContext2D} ctx
    * @param {Object} note
-   * @param {number} headX - 头部 X（目标区方向）
+   * @param {number} headX - 头部 X（未头判时随移动）
    * @param {number} y - 轨道 Y
    * @param {number} barPad - 上下内边距
    * @param {number} h - 轨道高
    * @param {number} trackX - 轨道左边缘
    * @param {number} trackW - 轨道宽
+   * @param {number} targetX - 目标区 X
    * @param {number} visibleRange - 目标区到右边缘距离
+   * @param {number} elapsed - 当前游戏时间
    * @private
    */
-  _drawHoldNote(ctx, note, headX, y, barPad, h, trackX, trackW, visibleRange) {
-    const holdW = Math.max(16, (note.duration / NOTE_TRAVEL_VISUAL_MS) * visibleRange);
-    // 限制在轨道框内（头部可能已越过目标区向左）
-    const startX = Math.max(headX - 2, trackX + 2);
-    const endX = Math.min(headX + holdW, trackX + trackW - 2);
-    if (endX <= startX) return;
+  _drawHoldNote(ctx, note, headX, y, barPad, h, trackX, trackW, targetX, visibleRange, elapsed) {
+    const active = note.holdActive;
+    // 尾部绝对时间：头判前=expectedTime+duration；头判后=holdStart+duration
+    const tailAbs = (active ? note.holdStart : note.expectedTime) + note.duration;
+    const tailTimeLeft = tailAbs - elapsed;
+    const tailProgress = Math.max(0, 1 - tailTimeLeft / NOTE_TRAVEL_VISUAL_MS);
+    const tailX = targetX + (1 - tailProgress) * visibleRange;
+
+    // 长条范围：头判后左端锁定目标区（按住点），右端=尾部位置
+    let startX = active ? targetX : headX;
+    let endX = active ? tailX : Math.max(headX, tailX);
+    startX = Math.max(startX, trackX + 2);
+    endX = Math.min(endX, trackX + trackW - 2);
 
     const barH = h - barPad * 2;
-    const active = note.holdActive;
 
-    ctx.fillStyle = active ? '#1a4a4a' : '#122a3a';
-    ctx.fillRect(startX, y + barPad, endX - startX, barH);
-    ctx.strokeStyle = active ? '#40e0e0' : '#2a8ab0';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(startX, y + barPad, endX - startX, barH);
+    if (endX > startX + 2) {
+      ctx.fillStyle = active ? '#1a4a4a' : '#122a3a';
+      ctx.fillRect(startX, y + barPad, endX - startX, barH);
+      ctx.strokeStyle = active ? '#40e0e0' : '#2a8ab0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(startX, y + barPad, endX - startX, barH);
+    }
 
-    // 头部亮块（按下点）
+    // 头部亮块（按下点）：头判后锁定在目标区
+    const headBlockX = Math.max(active ? targetX : headX, trackX + 2);
     ctx.fillStyle = active ? '#60f0f0' : '#40b0d0';
-    ctx.fillRect(startX, y + barPad, 4, barH);
+    ctx.fillRect(headBlockX - 2, y + barPad, 4, barH);
 
     // HOLD 文字（宽度足够时显示）
     if (endX - startX > 46) {

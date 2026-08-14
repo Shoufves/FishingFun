@@ -48,14 +48,19 @@ const DOUBLE_GAP_MS = 160;
 /** @type {number} triplet 三键间隔（ms） */
 const TRIPLET_GAP_MS = 120;
 
-/** @type {number} hold 完美伤害倍率 */
-const HOLD_DAMAGE_MULT = 1.5;
-
-/** @type {number} hold 部分伤害倍率 */
-const HOLD_PARTIAL_MULT = 0.5;
-
-/** @type {number} hold 头部/尾部判定窗口（ms） */
+/** @type {number} hold 头判/尾判判定窗口（ms） */
 const HOLD_WINDOW_MS = 150;
+
+/**
+ * 尾判伤害倍率（按尾判精度）
+ * 设计: hold 共两个判定点（头判+尾判），但只占 1 个物量(combo)。
+ * 头判伤害 = 基础伤害 × 精度系数(同 tap)；尾判伤害 = 基础伤害 × 下表倍率。
+ */
+const TAIL_DMG_MULT = Object.freeze({
+  perfect: 0.6,
+  good: 0.3,
+  miss: 0,
+});
 
 import {
   calcFishStamina, calcPlayerStamina, calcBaseDamage,
@@ -344,12 +349,11 @@ class CatchSystem {
       if (ft.timer <= 0) this._floatingTexts.splice(i, 1);
     }
 
-    // hold 超时保护：keyup 丢失时按完整长按结算
+    // hold 超时保护：keyup 丢失时按尾判完成结算
     for (const note of this._notes) {
       if (note.holdActive &&
-          this._elapsed > note.holdStart + note.duration + HOLD_WINDOW_MS * 2) {
-        note.holdActive = false;
-        this._applyHit(note, 'perfect', this._baseDamage * HOLD_DAMAGE_MULT);
+          this._elapsed > note.holdStart + note.duration + HOLD_WINDOW_MS) {
+        this._applyHoldTail(note, 'perfect');
       }
     }
 
@@ -430,18 +434,24 @@ class CatchSystem {
         continue;
       }
 
-      // hold 键：头部窗口内按下开始长按
+      // hold 键：头判（头部到达目标区时的按下精度，计入 combo 物量）
       if (note.type === 'hold' && !note.holdActive) {
         if (this._elapsed < note.expectedTime - HOLD_WINDOW_MS) {
-          return { grade: 'miss', combo: this._combo, damage: 0 }; // 太早
+          return { grade: 'miss', combo: this._combo, damage: 0 }; // 太早，可再按
         }
         if (this._elapsed <= note.expectedTime + HOLD_WINDOW_MS) {
-          note.holdActive = true;
-          note.holdStart = this._elapsed;
-          this._lastGrade = 'hold';
-          return { grade: 'hold', combo: this._combo, damage: 0, holdActive: true };
+          const offset = note.getTimeOffset(this._elapsed);
+          const grade = this._judgeNote(note, offset);
+          if (grade === 'miss') {
+            // 头判偏差过大 → 整体 Miss
+            this._applyMiss(note);
+            this._currentNoteIdx++;
+            return { grade: 'miss', combo: this._combo, damage: 0 };
+          }
+          this._applyHoldHead(note, grade);
+          return { grade, combo: this._combo, damage: this._lastDamage || 0, holdActive: true };
         }
-        // 头部窗口已过且未启动 → 按 Miss 处理
+        // 头部窗口已过且未按 → 自动 Miss
         this._applyMiss(note);
         this._currentNoteIdx++;
         continue;
@@ -471,7 +481,8 @@ class CatchSystem {
   }
 
   /**
-   * 处理玩家松开（keyup）——仅对进行中的 hold 生效
+   * 处理玩家松开（keyup）——hold 尾判（不改变 combo 物量）
+   * 窗口: |偏移|≤150ms → perfect；≤300ms → good；更早松 → miss（断连击）
    * @returns {{ grade: string, combo: number, damage: number, hold?: boolean }}
    */
   handleHoldRelease() {
@@ -479,24 +490,106 @@ class CatchSystem {
 
     for (const note of this._notes) {
       if (!note.holdActive) continue;
-      note.holdActive = false;
-      const releaseOffset = this._elapsed - (note.holdStart + note.duration);
+      const tailOffset = this._elapsed - (note.holdStart + note.duration);
 
-      if (Math.abs(releaseOffset) <= HOLD_WINDOW_MS) {
-        // 完整长按 → 高额伤害
-        this._applyHit(note, 'perfect', this._baseDamage * HOLD_DAMAGE_MULT);
+      if (Math.abs(tailOffset) <= HOLD_WINDOW_MS) {
+        this._applyHoldTail(note, 'perfect');
         return { grade: 'perfect', combo: this._combo, damage: this._lastDamage || 0, hold: true };
       }
-      if (releaseOffset < 0) {
-        // 提前松开 → 部分伤害（玩家扣 2%）
-        this._applyHit(note, 'great', this._baseDamage * HOLD_PARTIAL_MULT);
-        return { grade: 'great', combo: this._combo, damage: this._lastDamage || 0, hold: true };
+      if (tailOffset < -HOLD_WINDOW_MS * 2) {
+        // 松得太早 → 尾判 Miss，断连击
+        this._applyHoldTail(note, 'miss');
+        return { grade: 'miss', combo: this._combo, damage: 0, hold: true };
       }
-      // 松晚了 → 部分伤害（玩家扣 5%）
-      this._applyHit(note, 'good', this._baseDamage * HOLD_PARTIAL_MULT);
+      // 略早/略晚 → 尾判 good
+      this._applyHoldTail(note, 'good');
       return { grade: 'good', combo: this._combo, damage: this._lastDamage || 0, hold: true };
     }
     return { grade: 'miss', combo: this._combo, damage: 0 };
+  }
+
+  /**
+   * hold 头判：命中后进入长按状态，伤害/连击与普通 tap 一致（物量 +1）
+   * @param {CatchNote} note
+   * @param {string} grade - 头判精度
+   * @private
+   */
+  _applyHoldHead(note, grade) {
+    note.holdActive = true;
+    note.holdStart = this._elapsed;
+    this._lastGrade = grade;
+    this._lastHitTime = this._elapsed;
+
+    // 物量：头判计入连击（与 tap 同规则）
+    if (grade === 'perfect') {
+      this._combo++;
+      if (this._combo > this._maxCombo) this._maxCombo = this._combo;
+    } else {
+      this._combo = 0;
+    }
+
+    // 伤害（同 tap：精度系数 + 连击暴击）
+    const p = this._getProbCoeff(grade);
+    let dmg = this._baseDamage * p;
+    if (grade === 'perfect' && this._combo >= 5) {
+      dmg *= 2.0;
+      this._flashWhite = true;
+      this._flashTimer = 200;
+    } else if (grade === 'perfect' && this._combo >= 3) {
+      dmg *= 1.5;
+      this._flashWhite = true;
+      this._flashTimer = 150;
+    }
+
+    // 玩家耐力损失（同 tap）
+    const playerDrain = this._getPlayerDrain(grade, this._playerStamina.max);
+    this._playerStamina.current = Math.max(0, this._playerStamina.current - playerDrain);
+    this._fishStamina.current = Math.max(0, this._fishStamina.current - dmg);
+    this._setShake(grade);
+    this._lastDamage = dmg;
+
+    this._floatingTexts.push({
+      text: '-' + Math.floor(dmg) + ' HOLD!',
+      color: grade === 'perfect' ? '#40d080' : '#e0c060',
+      timer: 800,
+      y: 0,
+    });
+
+    this._checkWinLose();
+  }
+
+  /**
+   * hold 尾判：松开精度判定，只加伤害不改 combo（物量已在头判计入）
+   * @param {CatchNote} note
+   * @param {string} grade - 尾判精度（perfect/good/miss）
+   * @private
+   */
+  _applyHoldTail(note, grade) {
+    note.hit = true;
+    note.grade = grade;
+    note.animTimer = HIT_ANIM_DURATION;
+    note.holdActive = false;
+    this._lastGrade = grade;
+    this._lastHitTime = this._elapsed;
+
+    const dmg = this._baseDamage * (TAIL_DMG_MULT[grade] || 0);
+    if (grade === 'miss') {
+      this._combo = 0; // 尾判 Miss 断连击
+      const drain = this._getPlayerDrain('miss', this._playerStamina.max);
+      this._playerStamina.current = Math.max(0, this._playerStamina.current - drain);
+    }
+    this._fishStamina.current = Math.max(0, this._fishStamina.current - dmg);
+    this._setShake(grade);
+    this._lastDamage = dmg;
+
+    this._floatingTexts.push({
+      text: grade === 'miss' ? 'HOLD Miss' : '-' + Math.floor(dmg) + ' HOLD!',
+      color: grade === 'perfect' ? '#40d080' : grade === 'good' ? '#e0c060' : '#e06050',
+      timer: 700,
+      y: 0,
+    });
+
+    this._checkWinLose();
   }
 
   /**
@@ -753,5 +846,5 @@ export {
   NOTE_TRAVEL_TIME,
   HOLD_MIN_MS,
   HOLD_WINDOW_MS,
-  HOLD_DAMAGE_MULT,
+  TAIL_DMG_MULT,
 };

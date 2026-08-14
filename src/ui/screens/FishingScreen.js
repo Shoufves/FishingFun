@@ -92,8 +92,10 @@ class FishingScreen extends Screen {
         } else if (e.type === 'keyup' && this._phase === Phase.CATCHING &&
                    this._catchSystem && !this._catchSystem.isFinished()) {
           const r = this._catchSystem.handleHoldRelease();
-          if (r && r.grade !== 'miss') {
-            this._playSound(r.grade === 'perfect' ? 'perfect' : 'click');
+          if (r && r.hold) {
+            const sound = r.grade === 'perfect' ? 'perfect'
+              : r.grade === 'miss' ? 'miss' : 'click';
+            this._playSound(sound);
           }
         }
         return;

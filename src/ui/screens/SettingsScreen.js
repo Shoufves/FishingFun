@@ -93,18 +93,18 @@ class SettingsScreen extends Screen {
     this._drawVolumeRow(ctx, cx, rowY0, rowH, '音乐 (BGM)', this._bgmVolume);
     this._drawVolumeRow(ctx, cx, rowY0 + rowH + rowGap, rowH, '音效 (SFX)', this._sfxVolume);
 
-    // 开发者模式按钮
+    // 开发者模式按钮（宽度自适应，避免窄屏溢出）
     const devY = rowY0 + (rowH + rowGap) * 2 + 14;
-    const devW = 320;
+    const devW = Math.min(320, w - 24);
     this._drawBtn(ctx, cx - devW / 2, devY, devW, 46,
       '⚡ 开发者模式（满级 + 99999 金币）', '#4a3a10', '#6a5518');
 
-    // 存档管理
+    // 存档管理（两个按钮并排，窄屏时压缩宽度）
     const btnY = devY + 46 + 22;
-    const btnW = 200;
+    const btnW = Math.min(200, (w - 40 - 12) / 2);
     const btnH = 44;
-    this._drawBtn(ctx, cx - btnW - 12, btnY, btnW, btnH, '导出存档', '#2a4a5a', '#3a6a7a');
-    this._drawBtn(ctx, cx + 12, btnY, btnW, btnH, '删除存档', '#5a2a2a', '#7a3a3a');
+    this._drawBtn(ctx, cx - btnW - 6, btnY, btnW, btnH, '导出存档', '#2a4a5a', '#3a6a7a');
+    this._drawBtn(ctx, cx + 6, btnY, btnW, btnH, '删除存档', '#5a2a2a', '#7a3a3a');
 
     // 状态提示
     if (this._statusText) {
@@ -118,7 +118,32 @@ class SettingsScreen extends Screen {
   }
 
   /**
-   * 绘制一行音量调节
+   * 计算音量行自适应布局（渲染与点击区域共用，保证一致）
+   * @param {number} w - 窗口宽
+   * @param {number} cx - 中心 X
+   * @returns {{rowX:number, rowW:number, labelW:number, barX:number, barW:number, btnMinusX:number, btnPlusX:number}}
+   * @private
+   */
+  _volumeLayout(w, cx) {
+    const rowW = Math.min(480, w - 24);
+    const rowX = cx - rowW / 2;
+    const labelW = Math.min(130, rowW * 0.32);
+    const btnZone = 76; // 两个 26px 按钮 + 间距 + 边距
+    const barX = rowX + labelW + 12;
+    const barW = Math.max(60, rowX + rowW - 16 - btnZone - barX);
+    return {
+      rowX,
+      rowW,
+      labelW,
+      barX,
+      barW,
+      btnMinusX: barX + barW + 10,
+      btnPlusX: barX + barW + 44,
+    };
+  }
+
+  /**
+   * 绘制一行音量调节（宽度自适应，窄屏不溢出）
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} cx
    * @param {number} y
@@ -128,31 +153,33 @@ class SettingsScreen extends Screen {
    * @private
    */
   _drawVolumeRow(ctx, cx, y, h, label, value) {
+    const w = window.innerWidth;
+    const lay = this._volumeLayout(w, cx);
+
     ctx.fillStyle = '#1a3a4a';
-    ctx.fillRect(cx - 240, y, 480, h);
+    ctx.fillRect(lay.rowX, y, lay.rowW, h);
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.font = 'bold 15px Consolas, "Courier New", monospace';
+    ctx.font = 'bold 14px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#c8d8d8';
-    ctx.fillText(label, cx - 220, y + h / 2);
+    ctx.fillText(label, lay.rowX + 14, y + h / 2);
 
     // 进度条
-    const barX = cx - 60;
-    const barW = 160;
     ctx.fillStyle = '#0e1e2e';
-    ctx.fillRect(barX, y + h / 2 - 6, barW, 12);
+    ctx.fillRect(lay.barX, y + h / 2 - 6, lay.barW, 12);
     ctx.fillStyle = '#3a8ad0';
-    ctx.fillRect(barX + 1, y + h / 2 - 5, (barW - 2) * value, 10);
+    ctx.fillRect(lay.barX + 1, y + h / 2 - 5, (lay.barW - 2) * value, 10);
 
     ctx.textAlign = 'center';
-    ctx.font = 'bold 12px Consolas, "Courier New", monospace';
+    ctx.font = 'bold 11px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#e0e8e8';
-    ctx.fillText(Math.round(value * 100) + '%', barX + barW / 2, y + h / 2 + 1);
+    ctx.fillText(Math.round(value * 100) + '%', lay.barX + lay.barW / 2, y + h / 2 + 1);
 
     // 减/加按钮
-    this._drawMiniBtn(ctx, barX + barW + 12, y + h / 2 - 13, 26, 26, '-');
-    this._drawMiniBtn(ctx, barX + barW + 46, y + h / 2 - 13, 26, 26, '+');
+    const btnY = y + h / 2 - 13;
+    this._drawMiniBtn(ctx, lay.btnMinusX, btnY, 26, 26, '-');
+    this._drawMiniBtn(ctx, lay.btnPlusX, btnY, 26, 26, '+');
   }
 
   /**
@@ -232,31 +259,30 @@ class SettingsScreen extends Screen {
 
     this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
 
-    // 音量行
+    // 音量行（与渲染共用 _volumeLayout，保证点击区域对齐）
     const rowY0 = 110;
     const rowH = 56;
     const rowGap = 16;
-    const barX = cx - 60;
-    const barW = 160;
+    const lay = this._volumeLayout(w, cx);
     // BGM
-    this._addClickRegion(barX + barW + 12, rowY0 + rowH / 2 - 13, 26, 26, () => this._changeVolume('bgm', -VOL_STEP));
-    this._addClickRegion(barX + barW + 46, rowY0 + rowH / 2 - 13, 26, 26, () => this._changeVolume('bgm', VOL_STEP));
+    this._addClickRegion(lay.btnMinusX, rowY0 + rowH / 2 - 13, 26, 26, () => this._changeVolume('bgm', -VOL_STEP));
+    this._addClickRegion(lay.btnPlusX, rowY0 + rowH / 2 - 13, 26, 26, () => this._changeVolume('bgm', VOL_STEP));
     // SFX
     const sfxY = rowY0 + rowH + rowGap;
-    this._addClickRegion(barX + barW + 12, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', -VOL_STEP));
-    this._addClickRegion(barX + barW + 46, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', VOL_STEP));
+    this._addClickRegion(lay.btnMinusX, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', -VOL_STEP));
+    this._addClickRegion(lay.btnPlusX, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', VOL_STEP));
 
-    // 开发者模式按钮
+    // 开发者模式按钮（宽度自适应）
     const devY = rowY0 + (rowH + rowGap) * 2 + 14;
-    const devW = 320;
+    const devW = Math.min(320, w - 24);
     this._addClickRegion(cx - devW / 2, devY, devW, 46, () => this._doDevMode());
 
-    // 存档管理按钮
+    // 存档管理按钮（窄屏时压缩宽度）
     const btnY = devY + 46 + 22;
-    const btnW = 200;
+    const btnW = Math.min(200, (w - 40 - 12) / 2);
     const btnH = 44;
-    this._addClickRegion(cx - btnW - 12, btnY, btnW, btnH, () => this._doExport());
-    this._addClickRegion(cx + 12, btnY, btnW, btnH, () => this._doDelete());
+    this._addClickRegion(cx - btnW - 6, btnY, btnW, btnH, () => this._doExport());
+    this._addClickRegion(cx + 6, btnY, btnW, btnH, () => this._doDelete());
   }
 
   /**

@@ -7,7 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CatchSystem, CatchNote } from '../../src/fishing/CatchSystem.js';
+import { CatchSystem, CatchNote, HOLD_WINDOW_MS } from '../../src/fishing/CatchSystem.js';
 import { calcMarkerInterval, calcMarkerCount } from '../../src/fishing/FormulaSheet.js';
 
 /** 低耐力鱼：鲤鱼（FP=3, R=2） */
@@ -122,44 +122,76 @@ function makeHoldNote(cs) {
   return n;
 }
 
-test('hold 完整长按: 伤害 ×1.5 且计入连击', () => {
+test('hold: 头判命中 + 尾判完成，两段伤害但物量只 +1', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const baseDmg = cs.getBaseDamage();
   const n = makeHoldNote(cs);
 
-  // 头部按下 → 启动长按
+  // 头判：头部到达目标区时按下（offset=0 → perfect），combo +1（占物量）
   cs._elapsed = n.expectedTime;
-  const startRes = cs.handleInput();
-  assert.equal(startRes.grade, 'hold');
-  assert.equal(startRes.holdActive, true);
+  const headRes = cs.handleInput();
+  assert.equal(headRes.grade, 'perfect');
+  assert.equal(headRes.holdActive, true);
+  assert.equal(cs.getState().combo, 1);
 
-  // 到尾部松开 → 完整长按
+  // 尾判：尾部到达时松开（offset=0 → perfect），combo 不增（物量已计）
   cs._elapsed = n.expectedTime + n.duration;
-  const relRes = cs.handleHoldRelease();
-  assert.equal(relRes.grade, 'perfect');
-  assert.ok(Math.abs(relRes.damage - baseDmg * 1.5) < 0.01);
+  const tailRes = cs.handleHoldRelease();
+  assert.equal(tailRes.grade, 'perfect');
+  assert.equal(cs.getState().combo, 1); // 关键：物量只占 1
+
+  // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
   const s = cs.getState();
-  assert.equal(s.combo, 1);
-  assert.ok(s.fishStamina.current < s.fishStamina.max);
+  const expected = 68 - baseDmg - baseDmg * 0.6; // 68 = 3×12+2×6+20
+  assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
+  assert.equal(n.hit, true, '尾判后键应消失');
 });
 
-test('hold 提前松开: 部分伤害（×0.5），玩家耐力扣 2%', () => {
+test('hold: 头判 Good 进入长按但断连击', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
-  const baseDmg = cs.getBaseDamage();
+  const n = makeHoldNote(cs);
+
+  cs._elapsed = n.expectedTime + 80; // 偏移 80ms → Good
+  const headRes = cs.handleInput();
+  assert.equal(headRes.grade, 'good');
+  assert.equal(headRes.holdActive, true);
+  assert.equal(cs.getState().combo, 0); // 非 perfect 断连击
+
+  cs._elapsed = n.expectedTime + n.duration;
+  cs.handleHoldRelease();
+  assert.equal(cs.getState().combo, 0); // 尾判不改变 combo
+});
+
+test('hold: 松得太早（>300ms）→ 尾判 Miss 断连击并扣 12% 耐力', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
   const n = makeHoldNote(cs);
 
   cs._elapsed = n.expectedTime;
-  cs.handleInput(); // 启动
-  cs._elapsed = n.expectedTime + n.duration * 0.5; // 半途松开
-  const relRes = cs.handleHoldRelease();
-  assert.equal(relRes.grade, 'great');
-  assert.ok(Math.abs(relRes.damage - baseDmg * 0.5) < 0.01);
+  cs.handleInput(); // 头判 perfect → combo 1
+  assert.equal(cs.getState().combo, 1);
+
+  cs._elapsed = n.expectedTime + n.duration * 0.4; // 提前松（偏移 -360ms < -300）
+  const tailRes = cs.handleHoldRelease();
+  assert.equal(tailRes.grade, 'miss');
+  assert.equal(cs.getState().combo, 0); // 尾判 miss 断连击
 
   const s = cs.getState();
-  const drain = Math.round(s.playerStamina.max * 0.02);
+  const drain = Math.round(s.playerStamina.max * 0.12);
   assert.ok(Math.abs((s.playerStamina.max - s.playerStamina.current) - drain) <= 1);
+});
+
+test('hold: 头判窗口内偏差过大（offset>100ms）→ 整体 Miss', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
+  const n = makeHoldNote(cs);
+
+  cs._elapsed = n.expectedTime + 120; // 120ms > 100ms 精度窗口
+  const res = cs.handleInput();
+  assert.equal(res.grade, 'miss');
+  assert.equal(n.missed, true);
 });
 
 test('hold 未按下: 头部窗口过后自动 Miss', () => {
@@ -173,17 +205,26 @@ test('hold 未按下: 头部窗口过后自动 Miss', () => {
   assert.equal(cs.getState().lastGrade, 'miss');
 });
 
-test('hold 进行中不会被自动 Miss（keyup 丢失时按完整长按结算）', () => {
+test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   const cs = new CatchSystem();
   cs.start(FISH_HARD);
+  const baseDmg = cs.getBaseDamage();
   const n = makeHoldNote(cs);
 
   cs._elapsed = n.expectedTime;
-  cs.handleInput(); // 启动 hold
-  // 继续推进远超尾部，无 keyup → 超时保护按完整长按结算
-  advanceTo(cs, n.duration + 500);
+  cs.handleInput(); // 头判 perfect → combo 1
+  assert.equal(cs.getState().combo, 1);
+
+  // 推进到尾部窗口之后，触发一帧 update → 超时保护自动尾判 perfect（不改变 combo）
+  cs._elapsed = n.expectedTime + n.duration + HOLD_WINDOW_MS + 1;
+  cs.update(0);
   assert.equal(n.hit, true);
   assert.equal(n.grade, 'perfect');
+  const s = cs.getState();
+  assert.equal(s.combo, 1);
+  // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
+  const expected = 104 - baseDmg - baseDmg * 0.6; // 104 = 6×12+2×6+20
+  assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
 });
 
 test('double: 两个紧邻 tap 可连续命中（间隔 160ms）', () => {
