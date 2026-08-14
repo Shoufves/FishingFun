@@ -368,22 +368,92 @@ class TitleScreen extends Screen {
 
 /* ============================================================
    MapSelectScreen（地图选择 — 主 Canvas CSS 坐标）
+   版本 2.0 (T-018): 从 GameData.MapDefinition 加载全部地图，
+   按玩家等级解锁，支持滚动浏览
    ============================================================ */
 
-/** 硬编码地图列表（占位，后续从 GameData 加载） */
-const PLACEHOLDER_MAPS = [
-  { id: 1,  name: '乡村池塘',  difficulty: 1, desc: '新手入门的最佳选择' },
-  { id: 2,  name: '大湖深水',  difficulty: 3, desc: '烟波浩渺，巨物藏身' },
-  { id: 3,  name: '山间溪流',  difficulty: 3, desc: '清澈冰凉，鳟鱼之乡' },
-  { id: 4,  name: '大河奔流',  difficulty: 4, desc: '滚滚东流，力量对决' },
-  { id: 5,  name: '热带雨林河', difficulty: 6, desc: '丛林深处，怪物潜伏' },
-];
+/** 上次进入地图选择时的玩家等级（用于新解锁高亮） */
+let _lastSeenLevel = 1;
+
+/** 地图行高与间距 */
+const MAP_ITEM_H = 48;
+const MAP_GAP = 6;
 
 class MapSelectScreen extends Screen {
   /** @override */
   onEnter() {
     super.onEnter();
-    console.log('[MapSelectScreen] 进入地图选择');
+    this._scrollY = 0;
+    this._statusText = null;
+    this._statusTimer = null;
+    this._maps = this._loadMaps();
+    this._wheelHandler = (e) => {
+      e.preventDefault();
+      this._scrollY += e.deltaY;
+      this._clampScroll();
+    };
+    this._addListener(document, 'wheel', this._wheelHandler);
+    console.log('[MapSelectScreen] 进入地图选择, 地图数=' + this._maps.length);
+  }
+
+  /** @override */
+  onExit() {
+    if (this._statusTimer) {
+      clearTimeout(this._statusTimer);
+      this._statusTimer = null;
+    }
+    super.onExit();
+  }
+
+  /**
+   * 从数据缓存加载地图列表
+   * @returns {Array}
+   * @private
+   */
+  _loadMaps() {
+    try {
+      const maps = window.GameData ? window.GameData.MapDefinition : null;
+      if (maps && maps.length > 0) return maps;
+      return [
+        { mapId: 1, mapName: '乡村池塘', difficulty: 1, minLevel: 1, description: '新手入门的最佳选择' },
+      ];
+    } catch (e) {
+      return [{ mapId: 1, mapName: '乡村池塘', difficulty: 1, minLevel: 1 }];
+    }
+  }
+
+  /** @returns {number} 当前玩家等级 */
+  _getLevel() {
+    return window._economy ? window._economy.getLevel() : 1;
+  }
+
+  /** @returns {number} 当前金币 */
+  _getGold() {
+    return window._economy ? window._economy.getGold() : 0;
+  }
+
+  /**
+   * 判断地图是否解锁
+   * @param {Object} map
+   * @returns {boolean}
+   * @private
+   */
+  _isUnlocked(map) {
+    return this._getLevel() >= (map.minLevel || 1);
+  }
+
+  /** 限制滚动范围 */
+  _clampScroll() {
+    const max = this._getScrollMax();
+    this._scrollY = Math.max(0, Math.min(max, this._scrollY));
+  }
+
+  /** @returns {number} 最大可滚动量 */
+  _getScrollMax() {
+    const h = window.innerHeight;
+    const avail = h - 96 - 44;
+    const content = this._maps.length * (MAP_ITEM_H + MAP_GAP);
+    return Math.max(0, content - avail);
   }
 
   /** @override */
@@ -391,6 +461,7 @@ class MapSelectScreen extends Screen {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const cx = w / 2;
+    const level = this._getLevel();
 
     ctx.fillStyle = 'rgba(10, 20, 35, 0.3)';
     ctx.fillRect(0, 0, w, h);
@@ -400,62 +471,142 @@ class MapSelectScreen extends Screen {
     ctx.textBaseline = 'middle';
     ctx.font = '28px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#f0e6c0';
-    ctx.fillText('选择钓场', cx, 50);
+    ctx.fillText('选择钓场', cx, 44);
+
+    // 玩家信息
+    ctx.font = '13px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#8ab0c0';
+    ctx.textAlign = 'left';
+    ctx.fillText('Lv.' + level + ' ' + (window._economy ? window._economy.getTitle() : ''), 16, 44);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#f0d060';
+    ctx.fillText('💰 ' + this._getGold(), w - 16, 44);
 
     // 分隔线
     ctx.strokeStyle = '#3a5a6a';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(w * 0.1, 76);
-    ctx.lineTo(w * 0.9, 76);
+    ctx.moveTo(w * 0.1, 70);
+    ctx.lineTo(w * 0.9, 70);
     ctx.stroke();
 
-    // 地图列表
-    const listW = Math.min(520, w * 0.75);
-    const itemH = Math.min(56, h / 14);
-    const gap = 6;
-    const listStartY = 96;
+    // 列表区域裁剪
+    const listStartY = 82;
+    const listEndY = h - 40;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, listStartY - 4, w, listEndY - listStartY + 8);
+    ctx.clip();
 
-    PLACEHOLDER_MAPS.forEach((map, index) => {
-      const y = listStartY + index * (itemH + gap);
-
-      ctx.fillStyle = (index % 2 === 0) ? '#1a3a4a' : '#1e3e4e';
-      ctx.fillRect(cx - listW / 2, y, listW, itemH);
-
-      const diffColors = ['#5a9a5a', '#8a9a4a', '#c0a040', '#c07030', '#c04040'];
-      ctx.fillStyle = diffColors[map.difficulty - 1] || '#5a5a5a';
-      ctx.fillRect(cx - listW / 2, y, 4, itemH);
-
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.font = '18px Consolas, "Courier New", monospace';
-      ctx.fillStyle = '#e0d8c0';
-      ctx.fillText(map.name, cx - listW / 2 + 16, y + itemH / 2);
-
-      ctx.textAlign = 'right';
-      ctx.font = '13px Consolas, "Courier New", monospace';
-      ctx.fillStyle = '#5a7a8a';
-      ctx.fillText('难度 ' + map.difficulty + '/10', cx + listW / 2 - 12, y + itemH / 2);
+    const listW = Math.min(560, w * 0.8);
+    this._maps.forEach((map, index) => {
+      const y = listStartY - this._scrollY + index * (MAP_ITEM_H + MAP_GAP);
+      if (y + MAP_ITEM_H < listStartY || y > listEndY) return; // 视口外跳过
+      this._drawMapRow(ctx, map, index, y, cx, listW, level);
     });
+    ctx.restore();
 
-    // 返回按钮
-    const backW = 90, backH = 36;
-    const bx = 16, by = 12;
+    // 滚动提示
+    if (this._getScrollMax() > 0) {
+      ctx.textAlign = 'center';
+      ctx.font = '11px Consolas, "Courier New", monospace';
+      ctx.fillStyle = '#3a5a6a';
+      ctx.fillText('↑↓ / 滚轮 滚动列表', cx, h - 22);
+    }
+
+    // 状态提示
+    if (this._statusText) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 14px Consolas, "Courier New", monospace';
+      ctx.fillStyle = '#e0a040';
+      ctx.fillText(this._statusText, cx, listEndY + 6);
+    }
+
+    this._drawBackButton(ctx);
+  }
+
+  /**
+   * 绘制一行地图
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {Object} map - 地图定义
+   * @param {number} index - 行号
+   * @param {number} y - 绘制 Y
+   * @param {number} cx - 中心 X
+   * @param {number} listW - 列表宽
+   * @param {number} level - 玩家等级
+   * @private
+   */
+  _drawMapRow(ctx, map, index, y, cx, listW, level) {
+    const unlocked = this._isUnlocked(map);
+    const isNew = this._isNewlyUnlocked(map);
+
+    ctx.fillStyle = unlocked
+      ? ((index % 2 === 0) ? '#1a3a4a' : '#1e3e4e')
+      : '#152630';
+    ctx.fillRect(cx - listW / 2, y, listW, MAP_ITEM_H);
+
+    // 新解锁高亮描边
+    if (isNew) {
+      ctx.strokeStyle = '#f0d060';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx - listW / 2 + 1, y + 1, listW - 2, MAP_ITEM_H - 2);
+    }
+
+    // 难度色条
+    const diffColors = ['#5a9a5a', '#8a9a4a', '#c0a040', '#c07030', '#c04040'];
+    const diff = Math.max(1, Math.min(5, map.difficulty || 1));
+    ctx.fillStyle = diffColors[diff - 1];
+    ctx.fillRect(cx - listW / 2, y, 4, MAP_ITEM_H);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 17px Consolas, "Courier New", monospace';
+    ctx.fillStyle = unlocked ? '#e0d8c0' : '#5a6a7a';
+    ctx.fillText(map.mapName, cx - listW / 2 + 16, y + MAP_ITEM_H / 2 - 5);
+
+    ctx.font = '12px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#5a7a8a';
+    ctx.fillText(map.description || map.regionHint || '', cx - listW / 2 + 16, y + MAP_ITEM_H / 2 + 13);
+
+    ctx.textAlign = 'right';
+    ctx.font = '12px Consolas, "Courier New", monospace';
+    if (unlocked) {
+      ctx.fillStyle = '#6a9a8a';
+      ctx.fillText('难度 ' + (map.difficulty || 1) + '/10', cx + listW / 2 - 12, y + MAP_ITEM_H / 2);
+    } else {
+      ctx.fillStyle = '#8a5650';
+      ctx.fillText('🔒 Lv.' + (map.minLevel || 1) + ' 解锁', cx + listW / 2 - 12, y + MAP_ITEM_H / 2);
+    }
+  }
+
+  /**
+   * 是否本次进入新解锁的地图（等级提升后）
+   * @param {Object} map
+   * @returns {boolean}
+   * @private
+   */
+  _isNewlyUnlocked(map) {
+    const level = this._getLevel();
+    const min = map.minLevel || 1;
+    return min <= level && min > _lastSeenLevel;
+  }
+
+  /**
+   * 绘制返回按钮
+   * @param {CanvasRenderingContext2D} ctx
+   * @private
+   */
+  _drawBackButton(ctx) {
+    const bw = 90, bh = 36, bx = 16, by = 12;
     ctx.fillStyle = '#3a5a6a';
-    ctx.fillRect(bx, by, backW, backH);
+    ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = '#1a2a3a';
-    ctx.fillRect(bx + 2, by + 2, backW - 4, backH - 4);
+    ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = '16px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#a0c4e0';
-    ctx.fillText('← 返回', bx + backW / 2, by + backH / 2);
-
-    // 底部提示
-    ctx.textAlign = 'center';
-    ctx.font = '11px Consolas, "Courier New", monospace';
-    ctx.fillStyle = '#3a5a6a';
-    ctx.fillText('点击地图进入钓鱼场景（占位）', cx, h - 24);
+    ctx.fillText('← 返回', bx + bw / 2, by + bh / 2);
   }
 
   /** @override */
@@ -466,20 +617,36 @@ class MapSelectScreen extends Screen {
     const cx = w / 2;
 
     // 返回按钮
-    this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
+    this._addClickRegion(16, 12, 90, 36, () => {
+      _lastSeenLevel = this._getLevel();
+      this.router.pop();
+    });
 
     // 地图列表
-    const listW = Math.min(520, w * 0.75);
-    const itemH = Math.min(56, h / 14);
-    const gap = 6;
-    const listStartY = 96;
-    PLACEHOLDER_MAPS.forEach((map, index) => {
-      const y = listStartY + index * (itemH + gap);
-      this._addClickRegion(cx - listW / 2, y, listW, itemH, () => {
-        console.log('[MapSelect] 选中地图: ' + map.name + ' (ID=' + map.id + ')');
-        this.router.push(ScreenType.FISHING, { mapId: map.id });
+    const listW = Math.min(560, w * 0.8);
+    const listStartY = 82;
+    this._maps.forEach((map, index) => {
+      const y = listStartY - this._scrollY + index * (MAP_ITEM_H + MAP_GAP);
+      if (y + MAP_ITEM_H < 80 || y > h - 40) return;
+      this._addClickRegion(cx - listW / 2, y, listW, MAP_ITEM_H, () => {
+        if (!this._isUnlocked(map)) {
+          this._statusText = '🔒 需要 Lv.' + (map.minLevel || 1) + ' 才能进入';
+          this._flashStatus();
+          return;
+        }
+        _lastSeenLevel = this._getLevel();
+        this.router.push(ScreenType.FISHING, { mapId: map.mapId });
       });
     });
+  }
+
+  /** 状态提示定时消失 */
+  _flashStatus() {
+    if (this._statusTimer) clearTimeout(this._statusTimer);
+    this._statusTimer = setTimeout(() => {
+      this._statusText = null;
+      this._statusTimer = null;
+    }, 1800);
   }
 }
 
