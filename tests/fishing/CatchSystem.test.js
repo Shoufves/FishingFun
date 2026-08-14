@@ -25,9 +25,9 @@ test('耐力与伤害基础值正确', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const state = cs.getState();
-  assert.equal(state.fishStamina.max, 68);    // 3×12+2×6+20
+  assert.equal(state.fishStamina.max, 82);    // 3×14+2×8+24
   assert.equal(state.playerStamina.max, 265);  // 50×1.5+20×5+50×0.8+50
-  assert.equal(state.notes.length, 7);         // 4+floor(3.6)+floor(0.8)
+  assert.equal(state.notes.length, 9);         // 4+floor(4.5)+floor(1)
 });
 
 test('Perfect 命中: 鱼耐力减全额伤害，玩家不掉耐', () => {
@@ -106,7 +106,7 @@ test('连击: 连续 3 次 Perfect 触发 ×1.5 暴击', () => {
 
   const s = cs.getState();
   assert.equal(s.combo, 3);
-  const expected = 104 - (baseDmg * 2 + baseDmg * 1.5); // 104 = 6×12+2×6+20
+  const expected = 124 - (baseDmg * 2 + baseDmg * 1.5); // 124 = 6×14+2×8+24
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
 });
 
@@ -143,7 +143,7 @@ test('hold: 头判命中 + 尾判完成，两段伤害但物量只 +1', () => {
 
   // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
   const s = cs.getState();
-  const expected = 68 - baseDmg - baseDmg * 0.6; // 68 = 3×12+2×6+20
+  const expected = 82 - baseDmg - baseDmg * 0.6; // 82 = 3×14+2×8+24
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
   assert.equal(n.hit, true, '尾判后键应消失');
 });
@@ -298,7 +298,7 @@ test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   cs.start(FISH_HARD);
   const baseDmg = cs.getBaseDamage();
   const n = makeHoldNote(cs);
-  // 单键场景：移除其余键，避免 update 时相邻键自动 Miss 干扰 combo 断言
+  // 单键场景：推进的 elapsed 会让相邻键自动 Miss，干扰 combo 断言
   cs._notes = cs._notes.slice(0, 1);
 
   cs._elapsed = n.expectedTime;
@@ -306,14 +306,14 @@ test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   assert.equal(cs.getState().combo, 1);
 
   // 推进到尾部窗口之后，触发一帧 update → 超时保护自动尾判 perfect（不改变 combo）
+  // 注: 结算后的键可能被 _obtainNote 复用为补充键（对象池优化），
+  //     故用伤害/combo 验证而非键对象引用
   cs._elapsed = n.expectedTime + n.duration + HOLD_WINDOW_MS + 1;
   cs.update(0);
-  assert.equal(n.hit, true);
-  assert.equal(n.grade, 'perfect');
   const s = cs.getState();
   assert.equal(s.combo, 1);
   // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
-  const expected = 104 - baseDmg - baseDmg * 0.6; // 104 = 6×12+2×6+20
+  const expected = 124 - baseDmg - baseDmg * 0.6; // 124 = 6×14+2×8+24
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
 });
 

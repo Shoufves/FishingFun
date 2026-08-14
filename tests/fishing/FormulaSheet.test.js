@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * FormulaSheet 单元测试（T-012 公式中心）
@@ -50,28 +50,28 @@ test('calcWaitTime: 范围与方向正确（高吸引力更快）', () => {
 });
 
 test('calcMarkerCount: 4 + floor(FP×1.2) + floor(R×0.4)', () => {
-  assert.equal(calcMarkerCount(3, 2), 7);
+  assert.equal(calcMarkerCount(3, 2), 9);
   assert.equal(calcMarkerCount(1, 1), 5);
-  assert.equal(calcMarkerCount(10, 10), 20);
+  assert.equal(calcMarkerCount(10, 10), 24);
 });
 
 test('calcMarkerSpeed: 挣扎强度越高越快，稀有度>7加速', () => {
   const base = calcMarkerSpeed(3, 2, 3.0);
   const hard = calcMarkerSpeed(8, 8, 3.0);
-  assert.equal(calcMarkerSpeed(3, 2, 3.0), 98); // (80+18) × 1.0
+  assert.equal(calcMarkerSpeed(3, 2, 3.0), 108); // (84+24) × 1.0
   assert.ok(hard > base);
 });
 
 test('calcMarkerInterval: 间隔随挣扎强度缩短且不小于300ms', () => {
-  assert.equal(calcMarkerInterval(3, 3.0), 710); // (800-90) × 1.0
+  assert.equal(calcMarkerInterval(3, 3.0), 640); // (760-120) × 1.0
   assert.ok(calcMarkerInterval(10, 4.0) >= 300);
   assert.ok(calcMarkerInterval(3, 4.0) > calcMarkerInterval(6, 4.0));
 });
 
 test('calcFishStamina: FP×12 + R×6 + 20', () => {
-  assert.equal(calcFishStamina(3, 2), 68);
-  assert.equal(calcFishStamina(1, 1), 38);
-  assert.equal(calcFishStamina(10, 10), 200);
+  assert.equal(calcFishStamina(3, 2), 82);
+  assert.equal(calcFishStamina(1, 1), 46);
+  assert.equal(calcFishStamina(10, 10), 244);
 });
 
 test('calcPlayerStamina: 装备线性组合 + 50', () => {
