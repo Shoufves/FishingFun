@@ -294,6 +294,14 @@ class ScreenRouter {
    TitleScreen（标题画面 — 主 Canvas CSS 坐标）
    ============================================================ */
 
+/** 标题页二级菜单项 */
+const TITLE_MENU = [
+  { label: '图鉴', type: 'FISH_DEX' },
+  { label: '装备', type: 'EQUIPMENT' },
+  { label: '商店', type: 'SHOP' },
+  { label: '设置', type: 'SETTINGS' },
+];
+
 class TitleScreen extends Screen {
   /**
    * 绘制标题画面
@@ -347,6 +355,24 @@ class TitleScreen extends Screen {
     ctx.fillStyle = '#f0e6c0';
     ctx.fillText('开始游戏', cx, btnY + btnH / 2);
 
+    // 二级菜单
+    const menuY = btnY + btnH + 26;
+    const menuW = Math.min(150, (w - 40 - 36) / 4);
+    const menuH = 46;
+    const menuGap = 12;
+    const menuTotal = menuW * TITLE_MENU.length + menuGap * (TITLE_MENU.length - 1);
+    let mx = cx - menuTotal / 2;
+    for (const item of TITLE_MENU) {
+      ctx.fillStyle = '#1a3a4a';
+      ctx.fillRect(mx, menuY, menuW, menuH);
+      ctx.fillStyle = '#224a5a';
+      ctx.fillRect(mx + 2, menuY + 2, menuW - 4, menuH - 4);
+      ctx.font = '16px Consolas, "Courier New", monospace';
+      ctx.fillStyle = '#a0c4e0';
+      ctx.fillText(item.label, mx + menuW / 2, menuY + menuH / 2);
+      mx += menuW + menuGap;
+    }
+
     // 底部
     ctx.font = '12px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#4a6a7a';
@@ -363,6 +389,20 @@ class TitleScreen extends Screen {
       cx - 110, h * 0.46, 220, 56,
       () => { this.router.push(ScreenType.MAP_SELECT); }
     );
+
+    // 二级菜单
+    const menuY = h * 0.46 + 56 + 26;
+    const menuW = Math.min(150, (w - 40 - 36) / 4);
+    const menuH = 46;
+    const menuGap = 12;
+    const menuTotal = menuW * TITLE_MENU.length + menuGap * (TITLE_MENU.length - 1);
+    let mx = cx - menuTotal / 2;
+    for (const item of TITLE_MENU) {
+      this._addClickRegion(mx, menuY, menuW, menuH, () => {
+        this.router.push(item.type);
+      });
+      mx += menuW + menuGap;
+    }
   }
 }
 
@@ -481,6 +521,17 @@ class MapSelectScreen extends Screen {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#f0d060';
     ctx.fillText('💰 ' + this._getGold(), w - 16, 44);
+
+    // 商店快捷入口
+    ctx.fillStyle = '#2a4a3a';
+    ctx.fillRect(w - 116, 12, 100, 36);
+    ctx.fillStyle = '#3a6a4a';
+    ctx.fillRect(w - 114, 14, 96, 32);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 14px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#c8e8d0';
+    ctx.fillText('🛒 商店', w - 66, 30);
 
     // 分隔线
     ctx.strokeStyle = '#3a5a6a';
@@ -620,6 +671,11 @@ class MapSelectScreen extends Screen {
     this._addClickRegion(16, 12, 90, 36, () => {
       _lastSeenLevel = this._getLevel();
       this.router.pop();
+    });
+
+    // 商店快捷入口
+    this._addClickRegion(w - 116, 12, 100, 36, () => {
+      this.router.push(ScreenType.SHOP);
     });
 
     // 地图列表

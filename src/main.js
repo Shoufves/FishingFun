@@ -18,6 +18,10 @@ import { Sprite } from './render/Sprite.js';
 import { AudioManager } from './core/AudioManager.js';
 import { FishingScreen } from './ui/screens/FishingScreen.js';
 import { ResultScreen } from './ui/screens/ResultScreen.js';
+import { ShopScreen } from './ui/screens/ShopScreen.js';
+import { EquipmentScreen } from './ui/screens/EquipmentScreen.js';
+import { FishDexScreen } from './ui/screens/FishDexScreen.js';
+import { SettingsScreen } from './ui/screens/SettingsScreen.js';
 import { EquipmentManager } from './systems/EquipmentManager.js';
 import { EQUIPMENT_LIBRARY } from './data/EquipmentData.js';
 import { BaitSystem } from './systems/BaitSystem.js';
@@ -395,6 +399,10 @@ async function bootGame() {
     router.register(ScreenType.MAP_SELECT, () => new MapSelectScreen(router));
     router.register(ScreenType.FISHING, () => new FishingScreen(router));
     router.register(ScreenType.RESULT, () => new ResultScreen(router));
+    router.register(ScreenType.SHOP, () => new ShopScreen(router));
+    router.register(ScreenType.EQUIPMENT, () => new EquipmentScreen(router));
+    router.register(ScreenType.FISH_DEX, () => new FishDexScreen(router));
+    router.register(ScreenType.SETTINGS, () => new SettingsScreen(router));
 
     // BGM 路由：只在明确需要切换 BGM 的屏幕触发
     // 标题/地图选择共用 title，钓鱼/其他用各自 BGM
