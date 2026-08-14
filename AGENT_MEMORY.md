@@ -70,6 +70,14 @@
 - **第二次（输入层，最终根因）**：玩家按住空格进行 hold 长按时，浏览器持续派发 keydown（**自动重复**），第二次 `handleInput` 落到普通判定分支，`_applyHit` 把 `holdActive` 的 hold 键打掉（hit=true）→ 长条立即消失。修复（双层防护）：FishingScreen 忽略 `e.repeat`；CatchSystem 中 `holdActive` 的 hold 键在重复 keydown 时直接返回 hold 状态。
 - **测试**：65 例全通过（新增"重复 keydown 不打断 hold"回归用例；修复 2 个受生成序列影响的 flaky 测试，连续 3 次运行全绿）。
 
+### 2026-07-26 音游卡顿根治 + hold 卡顿误杀修复（用户反馈驱动，最终根因）
+
+- **卡顿根因**：① 主 Canvas DPR 无上限，高分屏(3x/4x)物理像素达 9~16 倍，全屏 fillRect/shadow/文字开销巨大；② WaterAnimation 每帧 4 波层×80 点 sin+20 光点；③ 热路径大量 shadowBlur（命中动画 16/浮动伤害/判定文字/组合文字）。
+- **修复**：DPR 上限 2（像素减 2~4 倍）；水面动画减量+`setQuality` 低档（2 层/6 光点）；CatchUI/FishingScreen 热路径 shadow 全移除（双层文字模拟阴影，视觉等价）；main.js 帧预算监控（连续 15 帧 >40ms 自动降质，恢复后升回）。
+- **hold 消失最终根因**：卡顿帧 dt 巨大 → `elapsed` 快速越过 `holdStart+duration+150ms` → 超时保护（keyup 丢失兜底）**误触发** → 长条消失（60fps 下逻辑完全正常，已用诊断脚本验证）。
+- **修复**：`CatchNote.lastKeydownAt` 按键活动时间戳 + `handleHoldKeepAlive()`（e.repeat 在 CATCHING 阶段转发保活，不触发普通判定）；超时保护需"尾部已过 **且** 300ms 内无按键活动"才触发——卡顿时玩家持续按住不会被误杀，真正松键且 keyup 丢失仍能兜底。
+- **测试**：66 例全通过（新增"hold 卡顿鲁棒：大 dt 帧+保活不误杀"回归）。
+
 ### 2026-07-26 最终交付状态（可游玩版本）
 
 - **完整闭环可玩**：标题 → 地图选择（15 张，等级解锁）→ 钓鱼（抛竿/等待/搏鱼）→ 结算（金币/经验/纪录写回+升级）→ 商店（装备/饵料）→ 装备更换 → 图鉴收集 → 设置（音量/存档管理），全部自动存档。
