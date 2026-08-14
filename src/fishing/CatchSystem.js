@@ -690,15 +690,15 @@ class CatchSystem {
   }
 
   /**
-   * 判定单个标记等级
+   * 判定单个标记等级（T-021 平衡二轮：窗口收窄，更高精度要求）
    * @param {CatchNote} note
    * @param {number} offset - ms 偏差
    * @returns {string}
    */
   _judgeNote(note, offset) {
     if (offset <= 25) return 'perfect';
-    if (offset <= 60) return 'great';
-    if (offset <= 100) return 'good';
+    if (offset <= 50) return 'great';
+    if (offset <= 80) return 'good';
     return 'miss';
   }
 

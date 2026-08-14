@@ -96,50 +96,50 @@ function calcMarkerSpeed(fightPower, rarity, reelGearRatio = 4.0) {
 
 /**
  * 判定标记间隔 (ms)（高难鱼显著更密）
- * 来源：spec.md 2.3.3（T-021 平衡调整：800→760、×30→×40）
+ * 来源：spec.md 2.3.3（T-021 平衡二轮：760→720、×40→×45）
  * @param {number} fightPower - 鱼挣扎强度 1-10
  * @param {number} reelGearRatio - 渔轮速比 3.0-8.0
  * @returns {number} 标记间隔 (ms)
  */
 function calcMarkerInterval(fightPower, reelGearRatio = 4.0) {
-  let interval = 760 - fightPower * 40;
+  let interval = 700 - fightPower * 50;
   // 渔轮速比越高，间隔越大(更轻松)
   const equipFactor = 1 + ((reelGearRatio - 3) / 5) * 0.15;
   interval *= Math.min(1.3, equipFactor);
   if (DEBUG) console.log('[Formula] calcMarkerInterval:', { fightPower, reelGearRatio, result: interval });
-  return Math.max(300, interval);
+  return Math.max(260, interval);
 }
 
 /**
  * 鱼最大耐力（高难鱼更难磨死）
- * 来源：spec.md 2.3.2（T-021 平衡调整：×12→×14、×6→×8、+20→+24）
+ * 来源：spec.md 2.3.2（T-021 平衡二轮：×14→×20、×8→×12、+24→+36）
  * @param {number} fightPower - 挣扎强度 1-10
  * @param {number} rarity - 稀有度 1-10
  * @returns {number}
  */
 function calcFishStamina(fightPower, rarity) {
-  const stamina = fightPower * 14 + rarity * 8 + 24;
+  const stamina = fightPower * 20 + rarity * 12 + 36;
   if (DEBUG) console.log('[Formula] calcFishStamina:', { fightPower, rarity, result: stamina });
   return stamina;
 }
 
 /**
- * 玩家最大耐力
- * 来源：spec.md 2.3.2, plan.md 5.4.1
+ * 玩家最大耐力（更脆弱：容错降低，miss 代价更重）
+ * 来源：spec.md 2.3.2（T-021 平衡二轮：×1.1→×1.0、×3.5→×3.0、+40→+35）
  * @param {number} rodStrength - 钓竿强度 0-100
  * @param {number} reelDrag - 渔轮刹车力 1-30
  * @param {number} lineTensile - 鱼线拉力 0-100
  * @returns {number}
  */
 function calcPlayerStamina(rodStrength = 50, reelDrag = 20, lineTensile = 50) {
-  const stamina = rodStrength * 1.5 + reelDrag * 5 + lineTensile * 0.8 + 50;
+  const stamina = rodStrength * 1.0 + reelDrag * 3.0 + lineTensile * 0.5 + 35;
   if (DEBUG) console.log('[Formula] calcPlayerStamina:', { rodStrength, reelDrag, lineTensile, result: stamina });
   return Math.max(50, stamina);
 }
 
 /**
- * 基础伤害
- * 来源：spec.md 2.3.4, plan.md 5.4.2
+ * 基础伤害（整体下调，拉长战斗时间）
+ * 来源：spec.md 2.3.4（T-021 平衡二轮：/20→/21、/11→/12、×1.4→×1.3、/14→/15）
  * @param {number} rodStrength - 钓竿强度 0-100
  * @param {number} hookSharpness - 鱼钩锋利度 0-100
  * @param {number} reelGearRatio - 渔轮速比 3.0-8.0
@@ -147,7 +147,7 @@ function calcPlayerStamina(rodStrength = 50, reelDrag = 20, lineTensile = 50) {
  * @returns {number}
  */
 function calcBaseDamage(rodStrength = 50, hookSharpness = 50, reelGearRatio = 4.0, lineTensile = 50) {
-  const damage = rodStrength / 15 + hookSharpness / 8 + reelGearRatio * 2 + lineTensile / 10;
+  const damage = rodStrength / 21 + hookSharpness / 12 + reelGearRatio * 1.3 + lineTensile / 15;
   if (DEBUG) console.log('[Formula] calcBaseDamage:', { rodStrength, hookSharpness, reelGearRatio, lineTensile, result: damage });
   return Math.max(5, damage);
 }

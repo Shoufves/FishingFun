@@ -70,12 +70,12 @@
 |---|---|---|---|
 | U-025 | 判定标记数公式正确 | count = 4 + floor(FP×1.5) + floor(R×0.5) | P0 |
 | U-026 | Perfect 判定窗口 ±25ms → 正确输出 Perfect | within 25ms → 'Perfect' | P0 |
-| U-027 | Great 窗口 25-60ms → 正确输出 Great | within 60ms → 'Great' | P0 |
-| U-028 | Good 窗口 60-100ms → 正确输出 Good | within 100ms → 'Good' | P0 |
-| U-029 | >100ms → Miss | beyond 100ms → 'Miss' | P0 |
+| U-027 | Great 窗口 25-50ms → 正确输出 Great | within 50ms → 'Great' | P0 |
+| U-028 | Good 窗口 50-80ms → 正确输出 Good | within 80ms → 'Good' | P0 |
+| U-029 | >80ms → Miss | beyond 80ms → 'Miss' | P0 |
 | U-030 | 移动速度与 FightPower 正相关 | higher FP → faster speed | P1 |
-| U-031 | 鱼耐力公式正确：FP×14+Rarity×8+24 | 验证计算值准确 | P0 |
-| U-032 | 玩家耐力公式正确：装备属性线性组合+50 | 各种装备配置下值合理 | P0 |
+| U-031 | 鱼耐力公式正确：FP×20+Rarity×12+36 | 验证计算值准确 | P0 |
+| U-032 | 玩家耐力公式正确：强度×1.0+刹车×3.0+拉力×0.5+35 | 各种装备配置下值合理 | P0 |
 | U-033 | Perfect 对鱼造成全额伤害，玩家不掉耐 | dmg=baseDmg×1.0, plyStamina不变 | P0 |
 | U-034 | Great 对鱼造成 0.75x 伤害，玩家掉 2% | dmg=baseDmg×0.75, plyStamina-2% | P0 |
 | U-035 | Good 对鱼造成 0.5x 伤害，玩家掉 5% | dmg=baseDmg×0.50, plyStamina-5% | P0 |
@@ -87,7 +87,7 @@
 | U-041 | 连续 5 次 Perfect 触发高级暴击 | Perfect×5→下一次伤害×2.0 | P1 |
 | U-042 | 基础伤害公式正确：包含4种装备属性贡献 | 验证计算值准确 | P1 |
 | U-043 | 装备越好 → 基础伤害越高 | 高级装备组合 > 低级装备组合 | P1 |
-| U-044 | 判定标记按正确节奏生成 | interval = 760ms - FP×40ms | P1 |
+| U-044 | 判定标记按正确节奏生成 | interval = 700ms - FP×50ms | P1 |
 | U-045 | 耐力条动画随数值变化实时更新 | bars visually update each frame | P2 |
 
 ### 2.6 经济系统 (Economy)
