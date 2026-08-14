@@ -87,6 +87,9 @@ class FishingScreen extends Screen {
     this._keyHandler = (e) => {
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
+        // 忽略长按自动重复的 keydown：按住空格进行 hold 长按时，
+        // 重复事件会再次触发 handleInput 把 hold 键当普通键打掉（导致长条消失）
+        if (e.repeat) return;
         if (e.type === 'keydown') {
           this._handleSpace();
         } else if (e.type === 'keyup' && this._phase === Phase.CATCHING &&

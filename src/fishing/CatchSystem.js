@@ -434,6 +434,12 @@ class CatchSystem {
         continue;
       }
 
+      // hold 长按进行中：忽略重复 keydown（等待 keyup 尾判），
+      // 防止把进行中的 hold 键当普通键打掉
+      if (note.type === 'hold' && note.holdActive) {
+        return { grade: 'hold', combo: this._combo, damage: 0, holdActive: true };
+      }
+
       // hold 键：头判（头部到达目标区时的按下精度，计入 combo 物量）
       if (note.type === 'hold' && !note.holdActive) {
         if (this._elapsed < note.expectedTime - HOLD_WINDOW_MS) {

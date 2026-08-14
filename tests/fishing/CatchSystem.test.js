@@ -205,11 +205,46 @@ test('hold 未按下: 头部窗口过后自动 Miss', () => {
   assert.equal(cs.getState().lastGrade, 'miss');
 });
 
+test('hold 长按中重复 keydown 不会打掉进行中的 hold 键', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
+  const n = makeHoldNote(cs);
+  n.duration = 600;
+  // 单键场景：移除其余键（生成序列可能含 double/triplet 紧邻键，避免干扰）
+  cs._notes = cs._notes.slice(0, 1);
+
+  cs._elapsed = n.expectedTime;
+  const head = cs.handleInput();
+  assert.equal(head.grade, 'perfect');
+  assert.equal(cs.getState().notes[0].holdActive, true);
+
+  // 模拟按住空格触发的 keydown 自动重复（多次 handleInput）
+  cs._elapsed = n.expectedTime + 100;
+  const rep1 = cs.handleInput();
+  assert.equal(rep1.holdActive, true, '重复 keydown 应返回 hold 状态');
+  cs._elapsed = n.expectedTime + 200;
+  cs.handleInput();
+  cs._elapsed = n.expectedTime + 300;
+  cs.handleInput();
+
+  const mid = cs.getState().notes[0];
+  assert.equal(mid.hit, false, '重复 keydown 不应把 hold 键打掉');
+  assert.equal(mid.holdActive, true, 'hold 键应保持长按中');
+
+  // 尾判仍能正常完成
+  cs._elapsed = n.expectedTime + n.duration;
+  const tail = cs.handleHoldRelease();
+  assert.equal(tail.grade, 'perfect');
+  assert.equal(cs.getState().notes[0].hit, true);
+});
+
 test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   const cs = new CatchSystem();
   cs.start(FISH_HARD);
   const baseDmg = cs.getBaseDamage();
   const n = makeHoldNote(cs);
+  // 单键场景：移除其余键，避免 update 时相邻键自动 Miss 干扰 combo 断言
+  cs._notes = cs._notes.slice(0, 1);
 
   cs._elapsed = n.expectedTime;
   cs.handleInput(); // 头判 perfect → combo 1
