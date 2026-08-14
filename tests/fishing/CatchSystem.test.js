@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * CatchSystem 单元测试（T-009）
@@ -53,6 +53,7 @@ test('Perfect 命中: 鱼耐力减全额伤害，玩家不掉耐', () => {
 
 test('Good 命中: 玩家耐力损失约 5%', () => {
   const cs = new CatchSystem();
+  cs.setJudgeMode('hard'); // 困难窗口: good ≤80ms
   cs.start(FISH);
   cs._elapsed = cs._notes[0].expectedTime + 68; // 偏移 68ms → Good（窗口 ≤80ms）
   const r = cs.handleInput();
@@ -159,6 +160,7 @@ test('hold: 头判命中 + 尾判完成，两段伤害但物量只 +1', () => {
 
 test('hold: 头判 Good 进入长按但断连击', () => {
   const cs = new CatchSystem();
+  cs.setJudgeMode('hard'); // 困难窗口: good ≤80ms
   cs.start(FISH);
   const n = makeHoldNote(cs);
 
@@ -194,6 +196,7 @@ test('hold: 松得太早（>300ms）→ 尾判 Miss 断连击并扣 12% 耐力',
 
 test('hold: 头判窗口内偏差过大（offset>100ms）→ 整体 Miss', () => {
   const cs = new CatchSystem();
+  cs.setJudgeMode('hard'); // 困难窗口: miss >80ms
   cs.start(FISH);
   const n = makeHoldNote(cs);
 
@@ -300,6 +303,23 @@ test('低帧率下 hold 头判/尾判同样精确（事件时间戳）', () => {
   const tail = cs.handleHoldRelease(100000 + n.expectedTime + n.duration);
   assert.equal(tail.grade, 'perfect');
   assert.equal(cs.getState().notes[0].hit, true);
+});
+
+test('判定模式: 默认轻松，轻松比困难更宽松', () => {
+  const cs = new CatchSystem();
+  assert.equal(cs.getJudgeWindows().perfect, 40, '默认应为轻松模式');
+  assert.ok(cs.getJudgeWindows().easy === undefined || cs.getJudgeWindows().good >= 120);
+  // 偏移 30ms：轻松 = Perfect，困难 = Great
+  cs.start(FISH);
+  cs._elapsed = cs._notes[0].expectedTime + 30;
+  assert.equal(cs.handleInput().grade, 'perfect', '轻松模式 30ms 应为 Perfect');
+
+  const cs2 = new CatchSystem();
+  cs2.setJudgeMode('hard');
+  assert.equal(cs2.getJudgeWindows().perfect, 25, '困难模式 perfect 窗口 25ms');
+  cs2.start(FISH);
+  cs2._elapsed = cs2._notes[0].expectedTime + 30;
+  assert.equal(cs2.handleInput().grade, 'great', '困难模式 30ms 应为 Great');
 });
 
 test('补充键后判定连续性: 多次补充不破坏键序列与索引（防卡死回归）', () => {
@@ -419,6 +439,7 @@ test('Boss 特性: 对玩家伤害提高（miss 扣 12% × 1.5）', () => {
 
 test('Boss 技能: 激活期间免疫 Good 伤害', () => {
   const cs = new CatchSystem();
+  cs.setJudgeMode('hard'); // 困难窗口: 偏移68ms为Good
   cs.start(BOSS_FISH);
   cs._notes = cs._notes.slice(0, 1);
   const n = cs._notes[0];
@@ -432,6 +453,7 @@ test('Boss 技能: 激活期间免疫 Good 伤害', () => {
 
 test('Boss 技能: 冷却期 Good 伤害正常', () => {
   const cs = new CatchSystem();
+  cs.setJudgeMode('hard'); // 困难窗口: 偏移68ms为Good
   cs.start(BOSS_FISH);
   cs._notes = cs._notes.slice(0, 1);
   const n = cs._notes[0];

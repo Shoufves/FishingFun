@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * ============================================================
@@ -32,6 +32,8 @@ class SettingsScreen extends Screen {
     this._statusTimer = null;
     this._bgmVolume = 0.7;
     this._sfxVolume = 1.0;
+    this._difficulty = 'easy'; // 默认轻松
+    this._orientation = 'landscape'; // 默认横板
   }
 
   /** @override */
@@ -51,12 +53,14 @@ class SettingsScreen extends Screen {
     super.onExit();
   }
 
-  /** 从存档/音频读取当前音量 */
+  /** 从存档读取音量与模式设置 */
   _readVolumes() {
     try {
       const s = window.GameState && window.GameState.settings;
       this._bgmVolume = (s && typeof s.musicVolume === 'number') ? s.musicVolume : 0.7;
       this._sfxVolume = (s && typeof s.sfxVolume === 'number') ? s.sfxVolume : 1.0;
+      this._difficulty = (s && s.difficulty === 'hard') ? 'hard' : 'easy';
+      this._orientation = (s && s.orientation === 'portrait') ? 'portrait' : 'landscape';
     } catch (e) { /* 使用默认值 */ }
   }
 
@@ -71,6 +75,8 @@ class SettingsScreen extends Screen {
       if (!state.settings) state.settings = {};
       state.settings.musicVolume = this._bgmVolume;
       state.settings.sfxVolume = this._sfxVolume;
+      state.settings.difficulty = this._difficulty;
+      state.settings.orientation = this._orientation;
       if (window._persist) window._persist();
     } catch (e) { /* 静默 */ }
   }
@@ -91,23 +97,33 @@ class SettingsScreen extends Screen {
     ctx.fillText('设 置', cx, 40);
 
     // 音量行
-    const rowY0 = 110;
-    const rowH = 56;
-    const rowGap = 16;
+    const rowY0 = 104;
+    const rowH = 50;
+    const rowGap = 12;
     this._drawVolumeRow(ctx, cx, rowY0, rowH, '音乐 (BGM)', this._bgmVolume);
     this._drawVolumeRow(ctx, cx, rowY0 + rowH + rowGap, rowH, '音效 (SFX)', this._sfxVolume);
 
+    // 难度模式行
+    const diffY = rowY0 + (rowH + rowGap) * 2 + 12;
+    this._drawModeRow(ctx, cx, diffY, 44, '难度模式',
+      [['easy', '轻松'], ['hard', '困难']], this._difficulty);
+
+    // 显示模式行
+    const oriY = diffY + 44 + 10;
+    this._drawModeRow(ctx, cx, oriY, 44, '显示模式',
+      [['landscape', '横板'], ['portrait', '竖版']], this._orientation);
+
     // 开发者模式按钮（宽度自适应，避免窄屏溢出）
-    const devY = rowY0 + (rowH + rowGap) * 2 + 14;
+    const devY = oriY + 44 + 16;
     const devW = Math.min(320, w - 24);
-    this._drawBtn(ctx, cx - devW / 2, devY, devW, 46,
+    this._drawBtn(ctx, cx - devW / 2, devY, devW, 44,
       '⚡ 开发者模式（满级 + 99999 金币）', '#4a3a10', '#6a5518');
 
     // 存档管理（三按钮一行，宽度自适应）
-    const btnY = devY + 46 + 22;
+    const btnY = devY + 44 + 18;
     const btnGap = 8;
     const btnW = Math.min(180, (w - 40 - btnGap * 2) / 3);
-    const btnH = 44;
+    const btnH = 42;
     const btnX0 = cx - (btnW * 3 + btnGap * 2) / 2;
     this._drawBtn(ctx, btnX0, btnY, btnW, btnH, '导入存档', '#2a4a5a', '#3a6a7a');
     this._drawBtn(ctx, btnX0 + btnW + btnGap, btnY, btnW, btnH, '导出存档', '#2a4a5a', '#3a6a7a');
@@ -122,6 +138,49 @@ class SettingsScreen extends Screen {
     }
 
     this._drawBackButton(ctx);
+  }
+
+  /**
+   * 绘制二选一模式行（如 难度模式：轻松/困难）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} cx
+   * @param {number} y
+   * @param {number} h
+   * @param {string} label
+   * @param {Array<Array<string>>} options - [[值, 文案], ...]
+   * @param {string} current - 当前值
+   * @private
+   */
+  _drawModeRow(ctx, cx, y, h, label, options, current) {
+    const w = window.innerWidth;
+    const rowW = Math.min(480, w - 24);
+    const rowX = cx - rowW / 2;
+
+    ctx.fillStyle = '#1a3a4a';
+    ctx.fillRect(rowX, y, rowW, h);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 14px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#c8d8d8';
+    ctx.fillText(label, rowX + 14, y + h / 2);
+
+    // 选项按钮（右侧）
+    const btnZone = Math.min(210, rowW * 0.45);
+    const btnW = (btnZone - 8) / options.length;
+    let bx = rowX + rowW - 14 - btnZone;
+    for (const [value, text] of options) {
+      const active = value === current;
+      ctx.fillStyle = active ? '#2a6a4a' : '#224a5a';
+      ctx.fillRect(bx, y + 5, btnW, h - 10);
+      ctx.fillStyle = active ? '#3a8a5a' : '#2a5a6a';
+      ctx.fillRect(bx + 2, y + 7, btnW - 4, h - 14);
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 13px Consolas, "Courier New", monospace';
+      ctx.fillStyle = active ? '#f0e6c0' : '#7a9aaa';
+      ctx.fillText(text, bx + btnW / 2, y + h / 2);
+      bx += btnW + 8;
+    }
   }
 
   /**
@@ -267,9 +326,9 @@ class SettingsScreen extends Screen {
     this._addClickRegion(16, 12, 90, 36, () => { this.router.pop(); });
 
     // 音量行（与渲染共用 _volumeLayout，保证点击区域对齐）
-    const rowY0 = 110;
-    const rowH = 56;
-    const rowGap = 16;
+    const rowY0 = 104;
+    const rowH = 50;
+    const rowGap = 12;
     const lay = this._volumeLayout(w, cx);
     // BGM
     this._addClickRegion(lay.btnMinusX, rowY0 + rowH / 2 - 13, 26, 26, () => this._changeVolume('bgm', -VOL_STEP));
@@ -279,20 +338,59 @@ class SettingsScreen extends Screen {
     this._addClickRegion(lay.btnMinusX, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', -VOL_STEP));
     this._addClickRegion(lay.btnPlusX, sfxY + rowH / 2 - 13, 26, 26, () => this._changeVolume('sfx', VOL_STEP));
 
+    // 难度模式行
+    const diffY = rowY0 + (rowH + rowGap) * 2 + 12;
+    this._addModeRowRegions(cx, diffY, 44,
+      [['easy', '轻松'], ['hard', '困难']], 'difficulty');
+
+    // 显示模式行
+    const oriY = diffY + 44 + 10;
+    this._addModeRowRegions(cx, oriY, 44,
+      [['landscape', '横板'], ['portrait', '竖版']], 'orientation');
+
     // 开发者模式按钮（宽度自适应）
-    const devY = rowY0 + (rowH + rowGap) * 2 + 14;
+    const devY = oriY + 44 + 16;
     const devW = Math.min(320, w - 24);
-    this._addClickRegion(cx - devW / 2, devY, devW, 46, () => this._doDevMode());
+    this._addClickRegion(cx - devW / 2, devY, devW, 44, () => this._doDevMode());
 
     // 存档管理按钮（三按钮一行）
-    const btnY = devY + 46 + 22;
+    const btnY = devY + 44 + 18;
     const btnGap = 8;
     const btnW = Math.min(180, (w - 40 - btnGap * 2) / 3);
-    const btnH = 44;
+    const btnH = 42;
     const btnX0 = cx - (btnW * 3 + btnGap * 2) / 2;
     this._addClickRegion(btnX0, btnY, btnW, btnH, () => this._doImport());
     this._addClickRegion(btnX0 + btnW + btnGap, btnY, btnW, btnH, () => this._doExport());
     this._addClickRegion(btnX0 + (btnW + btnGap) * 2, btnY, btnW, btnH, () => this._doDelete());
+  }
+
+  /**
+   * 注册模式行选项按钮区域（与 _drawModeRow 布局一致）
+   * @param {number} cx
+   * @param {number} y
+   * @param {number} h
+   * @param {Array<Array<string>>} options
+   * @param {string} kind - 'difficulty' | 'orientation'
+   * @private
+   */
+  _addModeRowRegions(cx, y, h, options, kind) {
+    const w = window.innerWidth;
+    const rowW = Math.min(480, w - 24);
+    const rowX = cx - rowW / 2;
+    const btnZone = Math.min(210, rowW * 0.45);
+    const btnW = (btnZone - 8) / options.length;
+    let bx = rowX + rowW - 14 - btnZone;
+    for (const [value] of options) {
+      this._addClickRegion(bx, y + 5, btnW, h - 10, () => {
+        if (kind === 'difficulty') {
+          this._difficulty = value;
+        } else {
+          this._orientation = value;
+        }
+        this._saveSettings();
+      });
+      bx += btnW + 8;
+    }
   }
 
   /**

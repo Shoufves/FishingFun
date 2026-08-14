@@ -54,7 +54,12 @@ class BossBattleScreen extends Screen {
       skill: boss.skill,
     };
     const equip = window._equipmentManager ? window._equipmentManager.getTotalStats() : null;
+    // 读取设置：难度模式（默认轻松）与显示模式（默认横板）
+    const st = (window.GameState && window.GameState.settings) || {};
+    this._difficulty = (st.difficulty === 'hard') ? 'hard' : 'easy';
+    this._orientation = (st.orientation === 'portrait') ? 'portrait' : 'landscape';
     this._catchSystem = new CatchSystem();
+    this._catchSystem.setJudgeMode(this._difficulty);
     this._catchUI = new CatchUI();
     this._catchSystem.start(fish, equip);
 
@@ -156,8 +161,8 @@ class BossBattleScreen extends Screen {
       ctx.fillText('\u26A0 ' + state.bossSkill.name + ' \u6FC0\u6D3B\u4E2D\uFF01', w - 12, infoH + 20);
     }
 
-    // 搏鱼界面（轨道/耐力条下移以避开信息条）
-    this._catchUI.render(ctx, w, h, state);
+    // 搏鱼界面（轨道/耐力条下移以避开信息条；支持竖版模式）
+    this._catchUI.render(ctx, w, h, state, this._orientation);
 
     // 结束文字
     if (this._statusText && state.isFinished) {

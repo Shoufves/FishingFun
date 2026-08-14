@@ -32,6 +32,15 @@ const RAGE_THRESHOLD = 0.25;
 /** @type {boolean} 调试模式 */
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
+/**
+ * 判定窗口配置（设置：困难/轻松，默认轻松）
+ * 困难 = 原设计；轻松 = 更宽容
+ */
+const JUDGE_WINDOWS = Object.freeze({
+  hard: { perfect: 25, great: 50, good: 80 },
+  easy: { perfect: 40, great: 80, good: 120 },
+});
+
 /* ============================================================
    复杂键型常量（T-009.1）
    ============================================================ */
@@ -153,6 +162,9 @@ class CatchSystem {
      *  不 splice 主数组——避免破坏 _currentNoteIdx 索引导致判定卡死） */
     this._spareNotes = [];
 
+    /** @type {Object} 判定窗口（默认轻松模式；start 不会重置） */
+    this._judgeWindows = JUDGE_WINDOWS.easy;
+
     this._reset();
   }
 
@@ -228,6 +240,24 @@ class CatchSystem {
     if (this._textViews) this._textViews.length = 0;
     this._view = null;
     this._spareNotes.length = 0;
+  }
+
+  /**
+   * 设置判定模式（设置页：轻松/困难，默认轻松）
+   * @param {string} mode - 'easy' | 'hard'
+   */
+  setJudgeMode(mode) {
+    if (JUDGE_WINDOWS[mode]) {
+      this._judgeWindows = JUDGE_WINDOWS[mode];
+    }
+  }
+
+  /**
+   * 当前判定窗口（供 UI/测试读取）
+   * @returns {Object}
+   */
+  getJudgeWindows() {
+    return { ...this._judgeWindows };
   }
 
   /**
@@ -697,15 +727,16 @@ class CatchSystem {
   }
 
   /**
-   * 判定单个标记等级（T-021 平衡二轮：窗口收窄）
+   * 判定单个标记等级（窗口随设置：轻松/困难）
    * @param {CatchNote} note
    * @param {number} offset - ms 偏差
    * @returns {string}
    */
   _judgeNote(note, offset) {
-    if (offset <= 25) return 'perfect';
-    if (offset <= 50) return 'great';
-    if (offset <= 80) return 'good';
+    const w = this._judgeWindows;
+    if (offset <= w.perfect) return 'perfect';
+    if (offset <= w.great) return 'great';
+    if (offset <= w.good) return 'good';
     return 'miss';
   }
 

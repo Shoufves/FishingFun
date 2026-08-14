@@ -81,8 +81,13 @@ class CatchUI {
    * @param {number} w - 画布宽度
    * @param {number} h - 画布高度
    * @param {Object} state - CatchSystem.getState()
+   * @param {string} [orientation='landscape'] - 'landscape' 横板 | 'portrait' 竖版
    */
-  render(ctx, w, h, state) {
+  render(ctx, w, h, state, orientation) {
+    if (orientation === 'portrait') {
+      this._renderPortrait(ctx, w, h, state);
+      return;
+    }
     ctx.save();
     ctx.translate(state.shake.x || 0, state.shake.y || 0);
 
@@ -205,6 +210,247 @@ class CatchUI {
    */
   _shouldSkipNote(note) {
     return !!(note.hit || note.missed);
+  }
+
+  /**
+   * 竖版渲染（设置：竖版模式）
+   * 布局: 轨道垂直居中（键从上往下落，目标区在底部），双耐力条竖直立于两侧，
+   *       血从顶部往下扣减；条与轨道大小与横板一致
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} w
+   * @param {number} h
+   * @param {Object} state
+   * @private
+   */
+  _renderPortrait(ctx, w, h, state) {
+    ctx.save();
+    ctx.translate(state.shake.x || 0, state.shake.y || 0);
+    if (state.flashWhite) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // 布局：竖条宽=26（同横板条高），轨道宽=28（同横板轨道高），大小不变
+    const barW = 26;
+    const trackW = 28;
+    const topY = 66;
+    const bottomY = h - 48;
+    const barH = bottomY - topY;
+    const trackH = barH;
+
+    const playerX = 16;
+    const fishX = w - 16 - barW;
+    const trackX = (w - trackW) / 2;
+    const trackY = topY;
+
+    // 目标区在轨道底部
+    const targetY = trackY + trackH - 34;
+    const visibleRange = Math.max(20, targetY - trackY);
+
+    this._drawVerticalBar(ctx, playerX, topY, barW, barH,
+      state.playerStamina, '#4080c0', '#103060', '\u73A9\u5BB6');
+    this._drawVerticalBar(ctx, fishX, topY, barW, barH,
+      state.fishStamina, '#c04040', '#601010',
+      state.fish ? state.fish.fishName : '\u9C7C');
+
+    // 轨道背景
+    ctx.fillStyle = '#0a1a2a';
+    ctx.fillRect(trackX, trackY, trackW, trackH);
+    ctx.strokeStyle = '#2a4a5a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(trackX, trackY, trackW, trackH);
+
+    // 目标区（底部高亮）
+    ctx.fillStyle = 'rgba(60, 180, 120, 0.3)';
+    ctx.fillRect(trackX + 1, targetY - 14, trackW - 2, 28);
+    ctx.strokeStyle = 'rgba(60, 180, 120, 0.7)';
+    ctx.strokeRect(trackX + 1, targetY - 14, trackW - 2, 28);
+
+    // 中心虚线
+    ctx.strokeStyle = 'rgba(60, 180, 120, 0.5)';
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(trackX + trackW / 2, trackY + 2);
+    ctx.lineTo(trackX + trackW / 2, targetY - 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 狂暴提示
+    if (state.isRaging) {
+      ctx.fillStyle = 'rgba(255, 60, 60, 0.2)';
+      ctx.fillRect(trackX, trackY, trackW, trackH);
+      ctx.save();
+      ctx.translate(trackX - 14, trackY + trackH / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 12px Consolas,"Courier New",monospace';
+      ctx.fillStyle = '#e04040';
+      ctx.fillText('!! RAGE !!', 0, 0);
+      ctx.restore();
+    }
+
+    // 键：从上往下落（progress 0=顶部 → 1=目标区）
+    const barW2 = trackW - 8;
+    for (const note of state.notes) {
+      if (this._shouldSkipNote(note)) continue;
+      const timeLeft = note.expectedTime - state.elapsed;
+      const visualProgress = Math.max(0, 1 - timeLeft / NOTE_TRAVEL_VISUAL_MS);
+      if (timeLeft > NOTE_TRAVEL_VISUAL_MS + 100) continue;
+      if (timeLeft < -200 && note.type !== 'hold') continue;
+      if (note.type === 'hold') {
+        const tailAbs = (note.holdActive ? note.holdStart : note.expectedTime) + note.duration;
+        if (tailAbs - state.elapsed < -200) continue;
+      }
+
+      const noteY = trackY + visualProgress * visibleRange;
+
+      if (note.type === 'hold') {
+        this._drawPortraitHold(ctx, note, noteY, trackX, trackY, trackW,
+          targetY, visibleRange, state.elapsed, trackH);
+        continue;
+      }
+
+      const active = note.holdActive;
+      // 命中动画
+      if (note.animTimer > 0) {
+        const p = note.animTimer / 150;
+        const expandH = 5 + (1 - p) * 18;
+        ctx.globalAlpha = 0.3 + p * 0.5;
+        ctx.fillStyle = '#fff8e0';
+        ctx.fillRect(trackX + 3, noteY - expandH / 2, barW2, expandH);
+        ctx.globalAlpha = (1 - p) * 0.3;
+        ctx.fillStyle = '#80d0ff';
+        ctx.fillRect(trackX + 3, noteY - (5 + (1 - p) * 30) / 2, barW2, 5 + (1 - p) * 30);
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = '#e0d8c0';
+      ctx.fillRect(trackX + 3, noteY - 2.5, barW2, 5);
+    }
+
+    // 判定文字（目标区左侧）
+    if (state.lastGrade) {
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      const cfg = {
+        perfect: { text: 'Perfect!', color: '#40d080', size: 18 },
+        great:   { text: 'Great!',   color: '#60b0e0', size: 15 },
+        good:    { text: 'Good',     color: '#e0c060', size: 14 },
+        miss:    { text: 'Miss',     color: '#e06050', size: 13 },
+      };
+      const c = cfg[state.lastGrade] || cfg.miss;
+      ctx.font = 'bold ' + c.size + 'px Consolas,"Courier New",monospace';
+      ctx.fillStyle = c.color;
+      ctx.fillText(c.text, trackX - 8, targetY);
+    }
+
+    // 连击（目标区右侧）
+    if (state.combo >= 3) {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 14px Consolas,"Courier New",monospace';
+      ctx.fillStyle = state.lastGrade === 'perfect' ? '#f0d060' : '#c0c0c0';
+      ctx.fillText(state.combo + 'x', trackX + trackW + 8, targetY);
+    }
+
+    // Boss 技能警告（顶部）
+    if (state.bossSkill && state.bossSkill.active) {
+      const flash = Math.floor(Date.now() / 200) % 2 === 0;
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 13px Consolas,"Courier New",monospace';
+      ctx.fillStyle = flash ? '#ff5050' : '#c03030';
+      ctx.fillText('\u26A0 ' + state.bossSkill.name, w / 2, trackY - 22);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * 绘制竖版血条（血从顶部往下扣减）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   * @param {number} h
+   * @param {Object} stamina
+   * @param {string} fillColor
+   * @param {string} bgColor
+   * @param {string} label
+   * @private
+   */
+  _drawVerticalBar(ctx, x, y, w, h, stamina, fillColor, bgColor, label) {
+    const pct = stamina.percent;
+    const isLow = pct < 0.2;
+    const warnFlash = isLow && (Math.floor(Date.now() / 200) % 2 === 0);
+
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(x, y, w, h);
+    // 血从顶部往下扣：填充从顶部开始，高度随剩余比例
+    const fillH = Math.max(0, (h - 4) * pct);
+    ctx.fillStyle = warnFlash ? '#ff6060' : fillColor;
+    ctx.fillRect(x + 2, y + 2, w - 4, fillH);
+    ctx.strokeStyle = isLow ? (warnFlash ? '#ff9090' : '#c04040') : '#3a5a6a';
+    ctx.lineWidth = isLow ? 2 : 1;
+    ctx.strokeRect(x, y, w, h);
+
+    // 顶部标签（竖排）
+    ctx.save();
+    ctx.translate(x + w / 2, y + 8);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 12px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#f0e6c0';
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+
+    // 底部百分比
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = '10px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#8ab0c0';
+    ctx.fillText(Math.floor(pct * 100) + '%', x + w / 2, y + h + 2);
+  }
+
+  /**
+   * 竖版 hold 长按键（垂直长条：头部在按下点，尾部向下延伸/收拢）
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {Object} note
+   * @param {number} headY - 头部 Y
+   * @param {number} trackX
+   * @param {number} trackY
+   * @param {number} trackW
+   * @param {number} targetY
+   * @param {number} visibleRange
+   * @param {number} elapsed
+   * @param {number} trackH
+   * @private
+   */
+  _drawPortraitHold(ctx, note, headY, trackX, trackY, trackW, targetY, visibleRange, elapsed, trackH) {
+    const active = note.holdActive;
+    const tailAbs = (active ? note.holdStart : note.expectedTime) + note.duration;
+    const tailTimeLeft = tailAbs - elapsed;
+    const tailProgress = Math.max(0, 1 - tailTimeLeft / NOTE_TRAVEL_VISUAL_MS);
+    const tailY = trackY + tailProgress * visibleRange;
+
+    // 长条范围：头判后头部锁定目标区，尾部从上方收拢
+    let startY = active ? targetY : headY;
+    let endY = active ? tailY : Math.max(headY, tailY);
+    startY = Math.max(startY, trackY + 2);
+    endY = Math.min(endY, trackY + trackH - 2);
+
+    const barX = trackX + 3;
+    const barW = trackW - 6;
+    if (endY > startY + 2) {
+      ctx.fillStyle = active ? '#1a4a4a' : '#122a3a';
+      ctx.fillRect(barX, startY, barW, endY - startY);
+      ctx.strokeStyle = active ? '#40e0e0' : '#2a8ab0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, startY, barW, endY - startY);
+    }
+    // 头部亮块
+    const headBlockY = Math.max(active ? targetY : headY, trackY + 2);
+    ctx.fillStyle = active ? '#60f0f0' : '#40b0d0';
+    ctx.fillRect(barX, headBlockY - 2, barW, 4);
   }
 
   /** @private */

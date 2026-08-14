@@ -62,6 +62,8 @@ const DEFAULT_SAVE_DATA = Object.freeze({
     musicVolume: 0.7,
     sfxVolume: 1.0,
     language: 'zh',
+    difficulty: 'easy',
+    orientation: 'landscape',
   },
   unlockedMaps: [...INITIAL_UNLOCKED_MAPS],
   // FUTURE: 烹饪/制作/排行/账号 预留数据槽（Phase 6）

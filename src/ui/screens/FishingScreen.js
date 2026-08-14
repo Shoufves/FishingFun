@@ -78,6 +78,10 @@ class FishingScreen extends Screen {
     this._params = params || {};
     this._mapName = this._lookupMapName(this._params.mapId);
     this._mapBonus = this._calcMapBonus(this._params.mapId);
+    // 读取设置：难度模式（默认轻松）与显示模式（默认横板）
+    const st = (window.GameState && window.GameState.settings) || {};
+    this._difficulty = (st.difficulty === 'hard') ? 'hard' : 'easy';
+    this._orientation = (st.orientation === 'portrait') ? 'portrait' : 'landscape';
     this._castingSystem = new CastingSystem(this._equipment);
     this._castingUI = new CastingUI();
     this._waitSystem = null;
@@ -347,7 +351,7 @@ class FishingScreen extends Screen {
     }
 
     // 正常渲染搏鱼界面
-    this._catchUI.render(ctx, w, h, state);
+    this._catchUI.render(ctx, w, h, state, this._orientation);
 
     // 提示
     ctx.textAlign = 'center';
@@ -569,6 +573,7 @@ class FishingScreen extends Screen {
     const fishInstance = generator.generate(this._hooking.fish, 1, this._mapBonus, baitSize);
 
     this._catchSystem = new CatchSystem();
+    this._catchSystem.setJudgeMode(this._difficulty);
     this._catchUI = new CatchUI();
     this._catchSystem.start(fishInstance, this._equipment);
 

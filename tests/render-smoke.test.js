@@ -155,9 +155,19 @@ test('CatchUI 渲染含 hold 键与狂暴状态的轨道不抛错', async () => 
   assert.ok(cs.getState().notes.some(n => n.type === 'hold'), '应存在 hold 键');
 
   const ui = new CatchUI();
-  // 竖屏 + 横屏各渲染一次
+  // 横屏 + 竖屏各渲染一次
   ui.render(ctx, 1280, 720, cs.getState());
   ui.render(ctx, 400, 800, cs.getState());
+  // 竖版模式（轨道旋转 90°，键从上往下落）
+  ui.render(ctx, 400, 800, cs.getState(), 'portrait');
+  // 竖版 + hold 头判后（长条垂直渲染）
+  const n = cs._notes[0];
+  n.type = 'hold';
+  n.duration = 800;
+  cs._elapsed = n.expectedTime;
+  cs.handleInput();
+  cs._elapsed = n.expectedTime + 300;
+  ui.render(ctx, 400, 800, cs.getState(), 'portrait');
   assert.ok(true);
 });
 

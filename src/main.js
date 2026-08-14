@@ -309,7 +309,7 @@ async function bootGame() {
         equipped: { rod: null, reel: null, line: null, hook: null },
         fishdex: { caught: [], totalPerSpecies: {} },
         aquarium: { slots: [], capacity: 10 },
-        settings: { musicVolume: 0.7, sfxVolume: 1.0, language: 'zh' },
+        settings: { musicVolume: 0.7, sfxVolume: 1.0, language: 'zh', difficulty: 'easy', orientation: 'landscape' },
         unlockedMaps: [1],
         bossDefeated: [],
         timestamp: Date.now(),
