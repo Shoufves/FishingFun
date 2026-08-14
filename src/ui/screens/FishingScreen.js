@@ -161,6 +161,8 @@ class FishingScreen extends Screen {
     ctx.fillStyle = 'rgba(5, 15, 25, 0.25)';
     ctx.fillRect(0, 0, w, h);
 
+    this._drawHud(ctx, w);
+
     if (this._phase === Phase.CATCHING) {
       this._renderCatching(ctx, w, h);
       return;
@@ -181,6 +183,66 @@ class FishingScreen extends Screen {
 
     if (this._phase === Phase.WAITING) {
       this._renderWaiting(ctx, w, h);
+    }
+  }
+
+  /**
+   * 绘制 HUD：地图名 / 等级 / 经验条 / 金币
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} w - 窗口宽
+   * @private
+   */
+  _drawHud(ctx, w) {
+    const eco = window._economy;
+    if (!eco) return;
+    const mapName = this._lookupMapName(this._params && this._params.mapId);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 14px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#a0c4e0';
+    ctx.fillText(mapName, 16, 58);
+
+    ctx.font = '12px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#7a9aaa';
+    ctx.fillText('\u7B49\u7EA7 Lv.' + eco.getLevel() + ' ' + eco.getTitle(), 16, 80);
+
+    // 经验条
+    const xpW = 150, xpH = 10, xpX = 16, xpY = 100;
+    const prog = eco.getLevelProgress();
+    ctx.fillStyle = '#1a2a3a';
+    ctx.fillRect(xpX, xpY, xpW, xpH);
+    ctx.fillStyle = '#3a8ad0';
+    ctx.fillRect(xpX + 1, xpY + 1, (xpW - 2) * prog.ratio, xpH - 2);
+    ctx.strokeStyle = '#3a5a6a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(xpX, xpY, xpW, xpH);
+
+    ctx.font = 'bold 14px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#f0d060';
+    ctx.fillText('\u91D1\u5E01 ' + eco.getGold(), 16, 116);
+
+    // 右侧快捷入口提示（商店/图鉴由其他画面进入）
+    ctx.textAlign = 'right';
+    ctx.font = '11px Consolas,"Courier New",monospace';
+    ctx.fillStyle = '#3a5a6a';
+    ctx.fillText('ESC/Back \u8FD4\u56DE\u5730\u56FE', w - 16, 12);
+  }
+
+  /**
+   * 查询地图名称
+   * @param {number|undefined} mapId
+   * @returns {string}
+   * @private
+   */
+  _lookupMapName(mapId) {
+    try {
+      const maps = window.GameData ? window.GameData.MapDefinition : null;
+      if (!maps) return '\u672A\u77E5\u5730\u56FE';
+      const entry = maps.find(m => m.mapId === (mapId || 1));
+      return entry ? entry.mapName : '\u672A\u77E5\u5730\u56FE';
+    } catch (e) {
+      return '\u672A\u77E5\u5730\u56FE';
     }
   }
 
@@ -494,7 +556,7 @@ class FishingScreen extends Screen {
     if (result === 'win') {
       const fi = this._catchSystem.getFish();
       this._statusTimer = setTimeout(() => {
-        this.router.push('RESULT', { fish: fi });
+        this.router.push('RESULT', { fish: fi, mapId: this._params.mapId || 1 });
       }, 500);
       this._playSound('perfect');
       console.log('[Catch] 成功钓获！');

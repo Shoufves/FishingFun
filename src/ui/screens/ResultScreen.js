@@ -35,19 +35,25 @@ class ResultScreen extends Screen {
     this._isFirstCatch = false;
     this._lenRecord = null;
     this._wgtRecord = null;
+    this._mapId = 1;
+    this._mapName = '';
+    this._levelUpInfo = null;
   }
 
   /** @override */
   onEnter(params) {
     super.onEnter(params);
     this._fish = (params && params.fish) || null;
+    this._mapId = (params && params.mapId) || 1;
+    this._mapName = this._lookupMapName(this._mapId);
     this._animTimer = 0;
     this._animDone = false;
     this._displayPrice = 0;
     this._displayExp = 0;
+    this._levelUpInfo = null;
     if (!this._fish) { console.warn('[Result] 无鱼数据'); return; }
     this._calc();
-    this._checkRecords();
+    this._settleAll();
     if (DEBUG) console.log('[Result] ' + this._fish.name +
       ' 售价=' + this._result.price + ' 经验=' + this._result.exp +
       ' 品质=' + this._fish.quality +
@@ -122,8 +128,18 @@ class ResultScreen extends Screen {
       ctx.shadowBlur = 0;
     }
 
+    // 升级横幅
+    if (this._levelUpInfo) {
+      const flash = Math.floor(Date.now() / 300) % 2 === 0;
+      ctx.font = 'bold 20px Consolas,"Courier New",monospace';
+      ctx.fillStyle = flash ? '#f0e040' : '#b09030';
+      ctx.shadowColor = 'rgba(240,220,80,0.5)'; ctx.shadowBlur = 10;
+      ctx.fillText('\u2B06 \u5347\u7EA7! Lv.' + this._levelUpInfo.to, cx, 158);
+      ctx.shadowBlur = 0;
+    }
+
     // 像素鱼图
-    this._drawPixelFish(ctx, cx, 186, qCfg.color);
+    this._drawPixelFish(ctx, cx, 208, qCfg.color);
 
     // 分隔线
     const sepY = 268;
@@ -147,13 +163,15 @@ class ResultScreen extends Screen {
     this._drawRow(ctx, lx, infoRowY + rowH, '\u4F53\u91CD', weightStr);
     this._drawRow(ctx, lx, infoRowY + rowH * 2, '\u6210\u4F53\u8303\u56F4',
       (this._fish.minLengthCm || '?') + '~' + (this._fish.maxLengthCm || '?') + ' cm');
+    this._drawRow(ctx, lx, infoRowY + rowH * 3, '\u9493\u573A',
+      this._mapName || '\u672A\u77E5\u5730\u56FE');
 
     this._drawRow(ctx, rx, infoRowY, '\u7A00\u6709\u5EA6', stars);
     this._drawRow(ctx, rx, infoRowY + rowH, '\u53D8\u5F02', MUTATION_NAMES[this._fish.mutationLevel] || '\u65E0');
     this._drawRow(ctx, rx, infoRowY + rowH * 2, '\u6C34\u5C42', this._fish.habitatLayer || '-');
 
     // 历史纪录：身长最长 / 体重最重
-    const histY = infoRowY + rowH * 3 + 6;
+    const histY = infoRowY + rowH * 4 + 6;
     const wgtStr = (v) => v < 0.01 ? v.toFixed(4) : v.toFixed(2);
 
     // 身长最长：显示纪录值(当前-纪录的差值) - 对应体重
@@ -230,41 +248,68 @@ class ResultScreen extends Screen {
     };
   }
 
-  /** @private */
-  _checkRecords() {
+  /**
+   * 结算流程：登记图鉴 → 应用经济 → 持久化存档
+   * @private
+   */
+  _settleAll() {
+    this._registerCatch();
+    this._applyEconomy();
+    if (typeof window !== 'undefined' && window._persist) window._persist();
+  }
+
+  /**
+   * 通过 FishDex 登记鱼获并读取纪录（含首次/新纪录标记）
+   * @private
+   */
+  _registerCatch() {
     this._isFirstCatch = false;
     this._isNewRecord = false;
     this._lenRecord = null;
     this._wgtRecord = null;
     try {
-      const state = window.GameState;
-      if (!state || !state.fishdex) return;
-      const id = this._fish.fishId;
-      const noPrior = !state.fishdex.totalPerSpecies || !state.fishdex.totalPerSpecies[id];
-      // 从存档读取或初始化纪录
-      let lenR, wgtR;
-      if (state.fishdex.records && state.fishdex.records[id]) {
-        const r = state.fishdex.records[id];
-        lenR = { length: r.maxLength || 0, weight: r.maxLengthWeight || 0 };
-        wgtR = { length: r.maxWeightLength || 0, weight: r.maxWeight || 0 };
-      }
-      if (!lenR || lenR.length <= 0) {
-        lenR = { length: 0, weight: 0 };
-      }
-      if (!wgtR || wgtR.weight <= 0) {
-        wgtR = { length: 0, weight: 0 };
-      }
-      this._lenRecord = lenR;
-      this._wgtRecord = wgtR;
-      if (noPrior) {
-        this._isFirstCatch = true;
-        this._isNewRecord = true;
-        return;
-      }
-      if (this._fish.length > lenR.length || this._fish.weight > wgtR.weight) {
-        this._isNewRecord = true;
-      }
+      const dex = window._fishDex;
+      if (!dex) return;
+      const info = dex.registerCatch(this._fish);
+      this._isFirstCatch = info.isFirst;
+      this._isNewRecord = info.isNewRecord;
+      this._lenRecord = info.lenRecord;
+      this._wgtRecord = info.wgtRecord;
     } catch (e) { /* 静默 */ }
+  }
+
+  /**
+   * 通过 EconomyManager 结算金币/经验，捕获升级信息
+   * @private
+   */
+  _applyEconomy() {
+    const eco = window._economy;
+    if (!eco) return;
+    const res = eco.settleCatch(this._result.price, this._result.exp);
+    if (res.leveledUp) {
+      this._levelUpInfo = {
+        from: res.fromLevel,
+        to: res.newLevel,
+        gained: res.levelsGained,
+      };
+    }
+  }
+
+  /**
+   * 查询地图名称
+   * @param {number} mapId
+   * @returns {string}
+   * @private
+   */
+  _lookupMapName(mapId) {
+    try {
+      const maps = window.GameData ? window.GameData.MapDefinition : null;
+      if (!maps) return '';
+      const entry = maps.find(m => m.mapId === mapId);
+      return entry ? entry.mapName : '';
+    } catch (e) {
+      return '';
+    }
   }
 
   /** @private */
@@ -389,7 +434,7 @@ class ResultScreen extends Screen {
     const btnGap = isPortrait ? 10 : 20;
     const btnY = h - 72;
     this._addClickRegion(cx - btnW - btnGap / 2, btnY, btnW, 44, () => {
-      this.router.replace('FISHING', { mapId: 1 });
+      this.router.replace('FISHING', { mapId: this._mapId });
     });
     this._addClickRegion(cx + btnGap / 2, btnY, btnW, 44, () => {
       this.router.pop();

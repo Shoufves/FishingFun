@@ -1,0 +1,11 @@
+{
+  "name": "fishing-fun",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "钓趣 Fishing Fun — 纯前端像素钓鱼游戏（零运行时依赖）",
+  "scripts": {
+    "test": "node --test --test-isolation=none \"tests/**/*.test.js\"",
+    "serve": "node tools/serve.js"
+  }
+}

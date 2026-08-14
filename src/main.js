@@ -21,6 +21,8 @@ import { ResultScreen } from './ui/screens/ResultScreen.js';
 import { EquipmentManager } from './systems/EquipmentManager.js';
 import { EQUIPMENT_LIBRARY } from './data/EquipmentData.js';
 import { BaitSystem } from './systems/BaitSystem.js';
+import { EconomyManager } from './systems/EconomyManager.js';
+import { FishDex } from './systems/FishDex.js';
 
 /* ============================================================
    常量 & 状态
@@ -322,6 +324,33 @@ async function bootGame() {
       baitMgr.equipBait(1);
       if (DEBUG) console.log('[GameBoot] 已发放初始饵料 红蚯蚓 x10');
     }
+
+    // 3c. 初始化经济管理器（等级/经验/金币）
+    const economy = new EconomyManager();
+    window._economy = economy;
+    economy.restoreState(saveData.player || {});
+
+    // 3d. 初始化图鉴管理器
+    const fishDex = new FishDex();
+    window._fishDex = fishDex;
+    fishDex.restoreState(saveData.fishdex);
+
+    // 3e. 统一持久化：把各管理器状态写回 GameState 并写入 localStorage
+    window._persist = () => {
+      const state = window.GameState;
+      if (!state) return;
+      if (window._economy) state.player = window._economy.exportState();
+      if (window._equipmentManager) state.equipment = window._equipmentManager.exportState();
+      if (window._baitSystem) state.bait = window._baitSystem.exportState();
+      if (window._fishDex) state.fishdex = window._fishDex.exportState();
+      saveSave(state);
+    };
+
+    // 3f. 管理器变更时自动持久化
+    equipMgr.onChange(() => { if (window._persist) window._persist(); });
+    baitMgr.onChange(() => { if (window._persist) window._persist(); });
+    economy.onChange(() => { if (window._persist) window._persist(); });
+    if (window._persist) window._persist();
 
     // 4. 初始化渲染管线
     renderer = new Renderer(canvas);
