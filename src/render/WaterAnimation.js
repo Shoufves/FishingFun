@@ -26,6 +26,9 @@ class WaterAnimation {
     /** @type {Array<{x:number, y:number, r:number, speed:number, phase:number}>} 光点 */
     this._sparkles = [];
     this._initSparkles();
+
+    /** @type {CanvasGradient|null} 水面渐变缓存（避免每帧 createLinearGradient） */
+    this._waterGrad = null;
   }
 
   /**
@@ -82,12 +85,15 @@ class WaterAnimation {
 
     const time = this._elapsed / 1000;
 
-    // ========== 半透明蓝色渐变 ==========
-    const grad = ctx.createLinearGradient(0, y, 0, y + h);
-    grad.addColorStop(0, 'rgba(30, 80, 120, 0.25)');
-    grad.addColorStop(0.4, 'rgba(25, 70, 110, 0.35)');
-    grad.addColorStop(1, 'rgba(15, 50, 80, 0.50)');
-    ctx.fillStyle = grad;
+    // ========== 半透明蓝色渐变（缓存，避免每帧 createLinearGradient） ==========
+    if (!this._waterGrad) {
+      const grad = ctx.createLinearGradient(0, y, 0, y + h);
+      grad.addColorStop(0, 'rgba(30, 80, 120, 0.25)');
+      grad.addColorStop(0.4, 'rgba(25, 70, 110, 0.35)');
+      grad.addColorStop(1, 'rgba(15, 50, 80, 0.50)');
+      this._waterGrad = grad;
+    }
+    ctx.fillStyle = this._waterGrad;
     ctx.fillRect(x, y, w, h);
 
     // ========== 多层正弦波 ==========

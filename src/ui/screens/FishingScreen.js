@@ -65,6 +65,9 @@ class FishingScreen extends Screen {
     this._currentBaitId = (window._baitSystem && window._baitSystem.getEquippedBait()) || 1;
 
     this._hooking = { remaining: 0, total: 2000, fish: null };
+
+    /** @type {string} 地图名缓存（避免每帧查表） */
+    this._mapName = '';
   }
 
   /** @override */
@@ -73,6 +76,7 @@ class FishingScreen extends Screen {
     console.log('[FishingScreen] 进入钓鱼场景, params:', params);
 
     this._params = params || {};
+    this._mapName = this._lookupMapName(this._params.mapId);
     this._castingSystem = new CastingSystem();
     this._castingUI = new CastingUI();
     this._waitSystem = null;
@@ -216,7 +220,7 @@ class FishingScreen extends Screen {
   _drawHud(ctx, w) {
     const eco = window._economy;
     if (!eco) return;
-    const mapName = this._lookupMapName(this._params && this._params.mapId);
+    const mapName = this._mapName;
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';

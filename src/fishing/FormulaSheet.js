@@ -64,28 +64,28 @@ function calcWaitTime(baseWait, fishRarity, baitAttract, reelGearRatio = 4.0, li
 }
 
 /**
- * 判定标记数量
- * 来源：spec.md 2.3.3, plan.md 5.3
+ * 判定标记数量（难度曲线更陡：挣扎强度权重提升）
+ * 来源：spec.md 2.3.3（T-021 平衡调整：×1.2→×1.5、×0.4→×0.5）
  * @param {number} fightPower - 鱼挣扎强度 1-10
  * @param {number} rarity - 鱼稀有度 1-10
  * @returns {number} 标记数量
  */
 function calcMarkerCount(fightPower, rarity) {
-  const count = 4 + Math.floor(fightPower * 1.2) + Math.floor(rarity * 0.4);
+  const count = 4 + Math.floor(fightPower * 1.5) + Math.floor(rarity * 0.5);
   if (DEBUG) console.log('[Formula] calcMarkerCount:', { fightPower, rarity, result: count });
   return count;
 }
 
 /**
- * 判定标记速度 (px/s)
- * 来源：spec.md 2.3.5, plan.md 5.3
+ * 判定标记速度 (px/s)（整体更快，压迫感更强）
+ * 来源：spec.md 2.3.5（T-021 平衡调整：80→84、×6→×8）
  * @param {number} fightPower - 鱼挣扎强度 1-10
  * @param {number} rarity - 鱼稀有度 1-10
  * @param {number} reelGearRatio - 渔轮速比 3.0-8.0 (高=收线快=标记慢)
  * @returns {number} 标记速度 (px/s)
  */
 function calcMarkerSpeed(fightPower, rarity, reelGearRatio = 4.0) {
-  let speed = 80 + fightPower * 6;
+  let speed = 84 + fightPower * 8;
   if (rarity > 7) speed *= 1.15;
   // 渔轮速比越高，标记速度越慢(更容易)
   const equipFactor = 1 - ((reelGearRatio - 3) / 5) * 0.15;
@@ -95,14 +95,14 @@ function calcMarkerSpeed(fightPower, rarity, reelGearRatio = 4.0) {
 }
 
 /**
- * 判定标记间隔 (ms)
- * 来源：spec.md 2.3.3, plan.md 5.3
+ * 判定标记间隔 (ms)（高难鱼显著更密）
+ * 来源：spec.md 2.3.3（T-021 平衡调整：800→760、×30→×40）
  * @param {number} fightPower - 鱼挣扎强度 1-10
  * @param {number} reelGearRatio - 渔轮速比 3.0-8.0
  * @returns {number} 标记间隔 (ms)
  */
 function calcMarkerInterval(fightPower, reelGearRatio = 4.0) {
-  let interval = 800 - fightPower * 30;
+  let interval = 760 - fightPower * 40;
   // 渔轮速比越高，间隔越大(更轻松)
   const equipFactor = 1 + ((reelGearRatio - 3) / 5) * 0.15;
   interval *= Math.min(1.3, equipFactor);
@@ -111,14 +111,14 @@ function calcMarkerInterval(fightPower, reelGearRatio = 4.0) {
 }
 
 /**
- * 鱼最大耐力
- * 来源：spec.md 2.3.2, plan.md 5.4.1
+ * 鱼最大耐力（高难鱼更难磨死）
+ * 来源：spec.md 2.3.2（T-021 平衡调整：×12→×14、×6→×8、+20→+24）
  * @param {number} fightPower - 挣扎强度 1-10
  * @param {number} rarity - 稀有度 1-10
  * @returns {number}
  */
 function calcFishStamina(fightPower, rarity) {
-  const stamina = fightPower * 12 + rarity * 6 + 20;
+  const stamina = fightPower * 14 + rarity * 8 + 24;
   if (DEBUG) console.log('[Formula] calcFishStamina:', { fightPower, rarity, result: stamina });
   return stamina;
 }

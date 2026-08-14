@@ -423,7 +423,7 @@ class CatchSystem {
   }
 
   /**
-   * 耐力未归零时持续补充标记
+   * 耐力未归零时持续补充标记（复用已处理键，避免每批 new 5 个对象的 GC 峰值）
    */
   _extendNotes() {
     if (this._finished) return;
@@ -433,12 +433,47 @@ class CatchSystem {
       const nextTime = lastIdx >= 0
         ? Math.max(this._elapsed + 500, this._notes[lastIdx].expectedTime + this._noteInterval)
         : this._elapsed + 1000;
+      // 狂暴阶段补充键更密集（spec 2.3.6: 狂暴间隔缩短 25%）
+      const step = this._isRaging ? this._noteInterval * 0.75 : this._noteInterval;
       const count = 5;
       for (let i = 0; i < count; i++) {
-        this._notes.push(new CatchNote(baseIdx + i, nextTime + i * this._noteInterval, this._noteSpeed));
+        const note = this._obtainNote(baseIdx + i, nextTime + i * step, this._noteSpeed);
+        this._notes.push(note);
       }
       if (DEBUG) console.log('[Catch] 补充 ' + count + ' 个标记');
     }
+  }
+
+  /**
+   * 获取一个可用的键：优先复用已处理（hit/missed）的键并移到数组末尾
+   * （保证 expectedTime 单调，渲染顺序正确），池满才新建
+   * @param {number} id
+   * @param {number} expectedTime
+   * @param {number} speed
+   * @returns {CatchNote}
+   * @private
+   */
+  _obtainNote(id, expectedTime, speed) {
+    for (let i = 0; i < this._notes.length; i++) {
+      const n = this._notes[i];
+      if (n.hit || n.missed) {
+        this._notes.splice(i, 1); // 从原位移除，由调用方 push 到末尾
+        n.id = id;
+        n.expectedTime = expectedTime;
+        n.speed = speed;
+        n.type = 'tap';
+        n.duration = 0;
+        n.hit = false;
+        n.missed = false;
+        n.grade = null;
+        n.animTimer = 0;
+        n.holdActive = false;
+        n.holdStart = 0;
+        n.lastKeydownAt = 0;
+        return n;
+      }
+    }
+    return new CatchNote(id, expectedTime, speed);
   }
 
   /**
