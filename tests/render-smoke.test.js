@@ -159,6 +159,55 @@ test('CatchUI 渲染含 hold 键与狂暴状态的轨道不抛错', async () => 
   assert.ok(true);
 });
 
+test('hold 头判后长条持续渲染（不断变短）直到尾判/松开', async () => {
+  const { ctx } = await setup();
+  const ui = new CatchUI();
+  const cs = new CatchSystem();
+  cs.start({ fishId: 9, fishName: '金枪鱼', rarity: 8, fightPower: 9 });
+  const n = cs._notes[0];
+  n.type = 'hold';
+  n.duration = 800;
+
+  // 头判命中（perfect）
+  cs._elapsed = n.expectedTime;
+  const head = cs.handleInput();
+  assert.equal(head.grade, 'perfect');
+  assert.equal(head.holdActive, true);
+
+  // 头判后未尾判前：hit 必须为 false，UI 不应跳过
+  assert.equal(cs.getState().notes[0].hit, false);
+  assert.equal(uiSkip(ui, cs.getState().notes[0]), false);
+
+  // 长按中段（尾部未到，长条显示中）
+  cs._elapsed = n.expectedTime + n.duration * 0.5;
+  ui.render(ctx, 1280, 720, cs.getState());
+
+  // 关键回归：推进到系统虚拟轨道判定"不可见"（offset < -100）
+  // 旧 bug 在此处跳过渲染导致 hold 长条提前消失
+  const speed = cs.getNoteSpeed();
+  cs._elapsed = n.expectedTime + Math.ceil(100 * 1000 / speed) + 50;
+  const farNote = cs.getState().notes[0];
+  assert.equal(farNote.visible, false, '系统判定不可见（复现旧 bug 条件）');
+  assert.equal(uiSkip(ui, farNote), false, 'UI 仍不应跳过头判后的 hold 键');
+  ui.render(ctx, 1280, 720, cs.getState());
+
+  // 尾部接近目标区（长条接近收拢完成）
+  cs._elapsed = n.expectedTime + n.duration - 10;
+  ui.render(ctx, 1280, 720, cs.getState());
+
+  // 尾判完成 → hit=true → 不再渲染
+  cs._elapsed = n.expectedTime + n.duration;
+  cs.handleHoldRelease();
+  const doneNote = cs.getState().notes[0];
+  assert.equal(doneNote.hit, true);
+  assert.equal(uiSkip(ui, doneNote), true, '尾判后键应不再渲染');
+});
+
+/** 复刻 CatchUI 跳过判定（锁定回归：不得使用 note.visible） */
+function uiSkip(ui, note) {
+  return ui._shouldSkipNote(note);
+}
+
 test('CastingUI / WaitingUI 各状态渲染不抛错', async () => {
   const { ctx } = await setup();
   const casting = new CastingUI();

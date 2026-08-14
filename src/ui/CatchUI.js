@@ -133,6 +133,18 @@ class CatchUI {
     return '\uD83D\uDC1F';                        // 平静
   }
 
+  /**
+   * 判定某个键是否应跳过渲染
+   * 仅当键已命中/已 Miss 才跳过；头判后的 hold 长按键（holdActive 且未 hit）
+   * 必须持续渲染到尾判结束或玩家松开
+   * @param {Object} note - 来自 state.notes 的键
+   * @returns {boolean}
+   * @private
+   */
+  _shouldSkipNote(note) {
+    return !!(note.hit || note.missed);
+  }
+
   /** @private */
   _drawTrack(ctx, x, y, w, h, state) {
     const targetX = x + Math.min(64, w * 0.16);
@@ -169,8 +181,11 @@ class CatchUI {
     }
 
     // 基于时间进度的键定位：键从轨道框右边缘（progress=0）到目标区（progress=1）
+    // 注意: 不使用 note.visible（CatchSystem 基于 400px 虚拟轨道的判断）——
+    // 它会让头判后的 hold 长按键在 offset<-100 时被跳过而提前消失；
+    // 键的可见性完全由下方 UI 时间窗口（timeLeft 范围）控制。
     for (const note of state.notes) {
-      if (!note.visible || note.hit || note.missed) continue;
+      if (this._shouldSkipNote(note)) continue;
 
       const timeLeft = note.expectedTime - state.elapsed;
       // clamp 下界 0：timeLeft>1500 的键贴右边缘等待，绝不超出轨道框
@@ -178,7 +193,13 @@ class CatchUI {
 
       // 超出可视范围的不绘制
       if (timeLeft > NOTE_TRAVEL_VISUAL_MS + 100) continue;
-      if (timeLeft < -200) continue;
+      // hold 长按键例外：头部过目标区后长条仍须持续显示（尾部还在右侧），
+      // 直到尾部也通过目标区 200ms 或尾判完成（hit）
+      if (timeLeft < -200 && note.type !== 'hold') continue;
+      if (note.type === 'hold') {
+        const tailAbs = (note.holdActive ? note.holdStart : note.expectedTime) + note.duration;
+        if (tailAbs - state.elapsed < -200) continue;
+      }
 
       // 键从右边缘（progress=0）穿过目标区（progress=1）继续向左
       const noteX = targetX + (1 - visualProgress) * visibleRange;
