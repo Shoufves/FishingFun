@@ -97,10 +97,11 @@ class FishingScreen extends Screen {
             }
             return;
           }
-          this._handleSpace();
+          // 传入事件时间戳 → 判定精度与帧率无关（参考 osu）
+          this._handleSpace(e.timeStamp);
         } else if (e.type === 'keyup' && this._phase === Phase.CATCHING &&
                    this._catchSystem && !this._catchSystem.isFinished()) {
-          const r = this._catchSystem.handleHoldRelease();
+          const r = this._catchSystem.handleHoldRelease(e.timeStamp);
           if (r && r.hold) {
             const sound = r.grade === 'perfect' ? 'perfect'
               : r.grade === 'miss' ? 'miss' : 'click';
@@ -355,7 +356,11 @@ class FishingScreen extends Screen {
      阶段流转
      ============================================================ */
 
-  _handleSpace() {
+  /**
+   * 空格/点击统一入口
+   * @param {number} [eventStamp] - 输入事件时间戳（键盘传入，判定精度与帧率无关）
+   */
+  _handleSpace(eventStamp) {
     if (this._phase === Phase.READY) {
       this._startCasting();
       return;
@@ -365,7 +370,7 @@ class FishingScreen extends Screen {
       return;
     }
     if (this._phase === Phase.CATCHING && this._catchSystem && !this._catchSystem.isFinished()) {
-      const result = this._catchSystem.handleInput();
+      const result = this._catchSystem.handleInput(eventStamp);
       if (result) {
         const soundMap = { perfect: 'perfect', great: 'click', good: 'click', miss: 'miss', hold: 'click' };
         const sound = soundMap[result.grade] || 'click';

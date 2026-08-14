@@ -13,6 +13,68 @@
 const NOTE_TRAVEL_VISUAL_MS = 1500;
 
 class CatchUI {
+  constructor() {
+    /** @type {HTMLCanvasElement|null} 轨道静态层缓存（背景/目标区/虚线） */
+    this._trackCache = null;
+
+    /** @type {CanvasRenderingContext2D|null} */
+    this._trackCacheCtx = null;
+
+    /** @type {string} 缓存 key（尺寸/狂暴状态变化时重建） */
+    this._trackCacheKey = '';
+  }
+
+  /**
+   * 预渲染轨道静态层（背景、目标区、虚线、狂暴覆盖）
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   * @param {number} h
+   * @param {boolean} isRaging
+   * @private
+   */
+  _buildTrackCache(x, y, w, h, isRaging) {
+    try {
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.ceil(w));
+      c.height = Math.max(1, Math.ceil(h));
+      const cc = c.getContext('2d');
+      const targetX = Math.min(64, w * 0.16);
+
+      cc.fillStyle = '#0a1a2a';
+      cc.fillRect(0, 0, w, h);
+      cc.strokeStyle = '#2a4a5a';
+      cc.lineWidth = 1;
+      cc.strokeRect(0, 0, w, h);
+
+      cc.fillStyle = 'rgba(60, 180, 120, 0.3)';
+      cc.fillRect(targetX - 16, 3, 32, h - 6);
+      cc.strokeStyle = 'rgba(60, 180, 120, 0.7)';
+      cc.lineWidth = 1;
+      cc.strokeRect(targetX - 16, 3, 32, h - 6);
+
+      cc.strokeStyle = 'rgba(60, 180, 120, 0.5)';
+      cc.setLineDash([2, 3]);
+      cc.beginPath();
+      cc.moveTo(targetX, 2);
+      cc.lineTo(targetX, h - 2);
+      cc.stroke();
+      cc.setLineDash([]);
+
+      if (isRaging) {
+        cc.fillStyle = 'rgba(255, 60, 60, 0.2)';
+        cc.fillRect(0, 0, w, h);
+      }
+
+      this._trackCache = c;
+      this._trackCacheCtx = cc;
+    } catch (e) {
+      // 预渲染失败时降级为每帧直接绘制
+      this._trackCache = null;
+      this._trackCacheCtx = null;
+    }
+  }
+
   /**
    * 渲染搏鱼界面
    * @param {CanvasRenderingContext2D} ctx
@@ -148,31 +210,42 @@ class CatchUI {
   /** @private */
   _drawTrack(ctx, x, y, w, h, state) {
     const targetX = x + Math.min(64, w * 0.16);
-    const visibleRange = (x + w) - targetX; // 目标区到轨道框右边缘的距离
+    const visibleRange = (x + w) - targetX;
 
-    ctx.fillStyle = '#0a1a2a';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#2a4a5a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, w, h);
-
-    ctx.fillStyle = 'rgba(60, 180, 120, 0.3)';
-    ctx.fillRect(targetX - 16, y + 3, 32, h - 6);
-    ctx.strokeStyle = 'rgba(60, 180, 120, 0.7)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(targetX - 16, y + 3, 32, h - 6);
-
-    ctx.strokeStyle = 'rgba(60, 180, 120, 0.5)';
-    ctx.setLineDash([2, 3]);
-    ctx.beginPath();
-    ctx.moveTo(targetX, y + 2);
-    ctx.lineTo(targetX, y + h - 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    if (state.isRaging) {
-      ctx.fillStyle = 'rgba(255, 60, 60, 0.2)';
+    // 静态层预渲染（osu 式：背景/目标区/虚线只画一次，每帧 drawImage）
+    const cacheKey = Math.round(w) + 'x' + Math.round(h) + '|r' + (state.isRaging ? 1 : 0);
+    if (!this._trackCacheCtx || this._trackCacheKey !== cacheKey) {
+      this._trackCacheKey = cacheKey;
+      this._buildTrackCache(0, 0, w, h, state.isRaging);
+    }
+    if (this._trackCacheCtx && this._trackCache) {
+      ctx.drawImage(this._trackCache, x, y);
+    } else {
+      // 降级：直接绘制静态部分
+      ctx.fillStyle = '#0a1a2a';
       ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#2a4a5a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(60, 180, 120, 0.3)';
+      ctx.fillRect(targetX - 16, y + 3, 32, h - 6);
+      ctx.strokeStyle = 'rgba(60, 180, 120, 0.7)';
+      ctx.strokeRect(targetX - 16, y + 3, 32, h - 6);
+      ctx.strokeStyle = 'rgba(60, 180, 120, 0.5)';
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(targetX, y + 2);
+      ctx.lineTo(targetX, y + h - 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (state.isRaging) {
+        ctx.fillStyle = 'rgba(255, 60, 60, 0.2)';
+        ctx.fillRect(x, y, w, h);
+      }
+    }
+
+    // 狂暴提示文字（动态部分保留在主画布）
+    if (state.isRaging) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.font = 'bold 12px Consolas,"Courier New",monospace';
@@ -295,7 +368,7 @@ class CatchUI {
 
   /**
    * 大号伤害数字（在鱼耐力条右上方爆炸弹出）
-   * 性能：最多同时渲染 4 个，降低阴影开销
+   * 性能：最多同时渲染 4 个，无每帧数组分配
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} margin
    * @param {number} fishBarY
@@ -305,11 +378,14 @@ class CatchUI {
   _drawFloatingDamage(ctx, margin, fishBarY, w, texts) {
     const baseX = w - margin;
     const baseY = fishBarY;
-    const visible = texts.filter(ft => ft.timer > 0).slice(0, 4);
+    let count = 0;
 
-    for (const ft of visible) {
+    for (const ft of texts) {
+      if (ft.timer <= 0) continue;
+      if (count >= 4) break;
+      count++;
+
       const alpha = Math.min(1, ft.timer / 350);
-      if (alpha <= 0) continue;
 
       // 弧线：从鱼条右端出发，先往左上飞升，到顶后往左下回落
       const t = 1 - ft.timer / 800;
@@ -321,7 +397,6 @@ class CatchUI {
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.font = 'bold 32px Consolas,"Courier New",monospace';
-      ctx.fillStyle = ft.color || '#e06050';
       // 双层文字模拟阴影（避免 shadowBlur 的高分屏开销）
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fillText(ft.text, arcX + 2, arcY + 2);

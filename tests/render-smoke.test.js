@@ -203,6 +203,42 @@ test('hold 头判后长条持续渲染（不断变短）直到尾判/松开', as
   assert.equal(uiSkip(ui, doneNote), true, '尾判后键应不再渲染');
 });
 
+test('hold 头判后长条确实被绘制（fillRect 宽 > 20px，排除静默不画）', async () => {
+  const { } = await setup();
+  const rects = [];
+  const gradient = { addColorStop() {} };
+  const recCtx = new Proxy({}, {
+    get(t, p) {
+      if (p === 'measureText') return () => ({ width: 10 });
+      if (p === 'createLinearGradient' || p === 'createRadialGradient') return () => gradient;
+      if (p === 'fillRect') return (x, y, w, h) => { rects.push({ x, y, w, h }); };
+      if (typeof p === 'string') return () => undefined;
+      return undefined;
+    },
+    set() { return true; },
+  });
+
+  const cs = new CatchSystem();
+  cs.start({ fishId: 9, fishName: '金枪鱼', rarity: 8, fightPower: 9 });
+  const n = cs._notes[0];
+  n.type = 'hold';
+  n.duration = 800;
+
+  // 头判 → 长按中段（尾部未到）
+  cs._elapsed = n.expectedTime;
+  cs.handleInput();
+  assert.equal(cs.getState().notes[0].holdActive, true);
+  cs._elapsed = n.expectedTime + 300;
+
+  const ui = new CatchUI();
+  ui.render(recCtx, 1280, 720, cs.getState());
+
+  // 头判后的 hold 长条应产生宽度 > 20px 的填充矩形（长条本身）
+  const longRects = rects.filter(r => r.w > 20 && r.h > 10);
+  assert.ok(longRects.length >= 1,
+    '头判后应绘制 hold 长条，实际填充矩形: ' + JSON.stringify(rects.slice(0, 8)));
+});
+
 /** 复刻 CatchUI 跳过判定（锁定回归：不得使用 note.visible） */
 function uiSkip(ui, note) {
   return ui._shouldSkipNote(note);

@@ -133,6 +133,18 @@ class CatchNote {
 
 class CatchSystem {
   constructor() {
+    /** @type {number} 游戏开始时的真实时间基准（performance.now） */
+    this._gameStartReal = 0;
+
+    /** @type {Array<Object>} note 视图对象池（复用，避免每帧 GC） */
+    this._noteViews = [];
+
+    /** @type {Array<Object>} 浮动文字视图对象池 */
+    this._textViews = [];
+
+    /** @type {Object|null} 状态视图单例（复用） */
+    this._view = null;
+
     this._reset();
   }
 
@@ -197,6 +209,10 @@ class CatchSystem {
 
     /** @type {Array} 浮动伤害数字 */
     this._floatingTexts = [];
+
+    if (this._noteViews) this._noteViews.length = 0;
+    if (this._textViews) this._textViews.length = 0;
+    this._view = null;
   }
 
   /**
@@ -210,6 +226,9 @@ class CatchSystem {
     const eq = equip || PLACEHOLDER_EQUIP;
     const fp = fish.fightPower || 1;
     const ra = fish.rarity || 1;
+
+    // 真实时间基准（用于输入时刻精确判定，参考 osu：判定不依赖帧率）
+    this._gameStartReal = (typeof performance !== 'undefined') ? performance.now() : 0;
 
     // 耐力（FormulaSheet calcFishStamina / calcPlayerStamina）
     this._fishStamina.max = calcFishStamina(fp, ra);
@@ -423,13 +442,28 @@ class CatchSystem {
   }
 
   /**
+   * 解析判定时刻（osu 式：输入优先用事件时间戳，不依赖帧率）
+   * @param {number|undefined} eventStamp - 输入事件时间戳（performance.now 同源）
+   * @returns {number} 判定用游戏时间（ms）
+   * @private
+   */
+  _resolveJudgeTime(eventStamp) {
+    if (typeof eventStamp === 'number' && this._gameStartReal > 0) {
+      return eventStamp - this._gameStartReal;
+    }
+    return this._elapsed;
+  }
+
+  /**
    * 处理玩家按下（keydown）
-   * - tap/double/triplet：命中判定
-   * - hold：头部窗口内按下 → 启动长按
+   * - tap/double/triplet：命中判定（用输入事件时刻，帧率无关）
+   * - hold：头判（头部到达目标区时的按下精度，计入 combo 物量）
+   * @param {number} [eventStamp] - 输入事件时间戳（可选）
    * @returns {{ grade: string, combo: number, damage: number, holdActive?: boolean }}
    */
-  handleInput() {
+  handleInput(eventStamp) {
     if (this._finished) return { grade: 'miss', combo: this._combo, damage: 0 };
+    const judgeTime = this._resolveJudgeTime(eventStamp);
 
     // 找到当前未处理的标记
     while (this._currentNoteIdx < this._notes.length) {
@@ -442,17 +476,17 @@ class CatchSystem {
       // hold 长按进行中：忽略重复 keydown（等待 keyup 尾判），
       // 防止把进行中的 hold 键当普通键打掉；同时刷新保活时间戳
       if (note.type === 'hold' && note.holdActive) {
-        note.lastKeydownAt = this._elapsed;
+        note.lastKeydownAt = judgeTime;
         return { grade: 'hold', combo: this._combo, damage: 0, holdActive: true };
       }
 
-      // hold 键：头判（头部到达目标区时的按下精度，计入 combo 物量）
+      // hold 键：头判
       if (note.type === 'hold' && !note.holdActive) {
-        if (this._elapsed < note.expectedTime - HOLD_WINDOW_MS) {
+        if (judgeTime < note.expectedTime - HOLD_WINDOW_MS) {
           return { grade: 'miss', combo: this._combo, damage: 0 }; // 太早，可再按
         }
-        if (this._elapsed <= note.expectedTime + HOLD_WINDOW_MS) {
-          const offset = note.getTimeOffset(this._elapsed);
+        if (judgeTime <= note.expectedTime + HOLD_WINDOW_MS) {
+          const offset = note.getTimeOffset(judgeTime);
           const grade = this._judgeNote(note, offset);
           if (grade === 'miss') {
             // 头判偏差过大 → 整体 Miss
@@ -460,7 +494,7 @@ class CatchSystem {
             this._currentNoteIdx++;
             return { grade: 'miss', combo: this._combo, damage: 0 };
           }
-          this._applyHoldHead(note, grade);
+          this._applyHoldHead(note, grade, judgeTime);
           return { grade, combo: this._combo, damage: this._lastDamage || 0, holdActive: true };
         }
         // 头部窗口已过且未按 → 自动 Miss
@@ -469,17 +503,17 @@ class CatchSystem {
         continue;
       }
 
-      const offset = note.getTimeOffset(this._elapsed);
+      const offset = note.getTimeOffset(judgeTime);
 
       // 标记还远未到 → 太早，Miss
-      if (this._elapsed < note.expectedTime - 150) {
+      if (judgeTime < note.expectedTime - 150) {
         return { grade: 'miss', combo: this._combo, damage: 0 };
       }
 
       // 在判定窗口内
       if (offset <= 150) {
         const grade = this._judgeNote(note, offset);
-        this._applyHit(note, grade);
+        this._applyHit(note, grade, undefined, judgeTime);
         return { grade, combo: this._combo, damage: this._lastDamage || 0 };
       }
 
@@ -495,26 +529,28 @@ class CatchSystem {
   /**
    * 处理玩家松开（keyup）——hold 尾判（不改变 combo 物量）
    * 窗口: |偏移|≤150ms → perfect；≤300ms → good；更早松 → miss（断连击）
+   * @param {number} [eventStamp] - 输入事件时间戳（可选）
    * @returns {{ grade: string, combo: number, damage: number, hold?: boolean }}
    */
-  handleHoldRelease() {
+  handleHoldRelease(eventStamp) {
     if (this._finished) return { grade: 'miss', combo: this._combo, damage: 0 };
+    const judgeTime = this._resolveJudgeTime(eventStamp);
 
     for (const note of this._notes) {
       if (!note.holdActive) continue;
-      const tailOffset = this._elapsed - (note.holdStart + note.duration);
+      const tailOffset = judgeTime - (note.holdStart + note.duration);
 
       if (Math.abs(tailOffset) <= HOLD_WINDOW_MS) {
-        this._applyHoldTail(note, 'perfect');
+        this._applyHoldTail(note, 'perfect', judgeTime);
         return { grade: 'perfect', combo: this._combo, damage: this._lastDamage || 0, hold: true };
       }
       if (tailOffset < -HOLD_WINDOW_MS * 2) {
         // 松得太早 → 尾判 Miss，断连击
-        this._applyHoldTail(note, 'miss');
+        this._applyHoldTail(note, 'miss', judgeTime);
         return { grade: 'miss', combo: this._combo, damage: 0, hold: true };
       }
       // 略早/略晚 → 尾判 good
-      this._applyHoldTail(note, 'good');
+      this._applyHoldTail(note, 'good', judgeTime);
       return { grade: 'good', combo: this._combo, damage: this._lastDamage || 0, hold: true };
     }
     return { grade: 'miss', combo: this._combo, damage: 0 };
@@ -534,13 +570,15 @@ class CatchSystem {
    * hold 头判：命中后进入长按状态，伤害/连击与普通 tap 一致（物量 +1）
    * @param {CatchNote} note
    * @param {string} grade - 头判精度
+   * @param {number} [judgeTime] - 判定时刻（输入事件时间）
    * @private
    */
-  _applyHoldHead(note, grade) {
+  _applyHoldHead(note, grade, judgeTime) {
+    const t = (typeof judgeTime === 'number') ? judgeTime : this._elapsed;
     note.holdActive = true;
-    note.holdStart = this._elapsed;
+    note.holdStart = t;
     this._lastGrade = grade;
-    this._lastHitTime = this._elapsed;
+    this._lastHitTime = t;
 
     // 物量：头判计入连击（与 tap 同规则）
     if (grade === 'perfect') {
@@ -584,15 +622,17 @@ class CatchSystem {
    * hold 尾判：松开精度判定，只加伤害不改 combo（物量已在头判计入）
    * @param {CatchNote} note
    * @param {string} grade - 尾判精度（perfect/good/miss）
+   * @param {number} [judgeTime] - 判定时刻（输入事件时间）
    * @private
    */
-  _applyHoldTail(note, grade) {
+  _applyHoldTail(note, grade, judgeTime) {
+    const t = (typeof judgeTime === 'number') ? judgeTime : this._elapsed;
     note.hit = true;
     note.grade = grade;
     note.animTimer = HIT_ANIM_DURATION;
     note.holdActive = false;
     this._lastGrade = grade;
-    this._lastHitTime = this._elapsed;
+    this._lastHitTime = t;
 
     const dmg = this._baseDamage * (TAIL_DMG_MULT[grade] || 0);
     if (grade === 'miss') {
@@ -632,14 +672,16 @@ class CatchSystem {
    * @param {CatchNote} note
    * @param {string} grade
    * @param {number} [dmgOverride] - 自定义伤害（hold 使用）；缺省按 grade 系数
+   * @param {number} [judgeTime] - 判定时刻（输入事件时间）
    */
-  _applyHit(note, grade, dmgOverride) {
+  _applyHit(note, grade, dmgOverride, judgeTime) {
+    const t = (typeof judgeTime === 'number') ? judgeTime : this._elapsed;
     note.hit = true;
     note.grade = grade;
     note.animTimer = HIT_ANIM_DURATION;
 
     this._lastGrade = grade;
-    this._lastHitTime = this._elapsed;
+    this._lastHitTime = t;
 
     if (grade === 'perfect') {
       this._combo++;
@@ -797,49 +839,90 @@ class CatchSystem {
      公开访问器
      ============================================================ */
 
-  /** @returns {Object} 完整游戏状态 */
+  /**
+   * 更新 note 视图池（复用对象，避免每帧 GC 分配）
+   * @returns {Array<Object>}
+   * @private
+   */
+  _updateNoteViews() {
+    const notes = this._notes;
+    const views = this._noteViews;
+    while (views.length < notes.length) views.push({});
+    if (views.length > notes.length) views.length = notes.length;
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      const v = views[i];
+      v.id = n.id;
+      v.expectedTime = n.expectedTime;
+      v.speed = n.speed;
+      v.type = n.type;
+      v.duration = n.duration;
+      v.holdActive = n.holdActive;
+      v.holdStart = n.holdStart;
+      v.hit = n.hit;
+      v.missed = n.missed;
+      v.grade = n.grade;
+      v.animTimer = n.animTimer;
+      v.offset = n.getOffset(this._elapsed);
+      v.visible = n.isVisible(this._elapsed);
+      v.renderX = n.getRenderX(this._elapsed, 0);
+    }
+    return views;
+  }
+
+  /**
+   * 更新浮动文字视图池（复用对象）
+   * @returns {Array<Object>}
+   * @private
+   */
+  _updateTextViews() {
+    const src = this._floatingTexts;
+    const views = this._textViews;
+    while (views.length < src.length) views.push({});
+    if (views.length > src.length) views.length = src.length;
+    for (let i = 0; i < src.length; i++) {
+      const ft = src[i];
+      const v = views[i];
+      v.text = ft.text;
+      v.color = ft.color;
+      v.timer = ft.timer;
+      v.y = ft.y;
+    }
+    return views;
+  }
+
+  /** @returns {Object} 完整游戏状态（单例复用，每帧零分配） */
   getState() {
-    return {
-      fish: this._fish,
-      fishStamina: {
-        current: this._fishStamina.current,
-        max: this._fishStamina.max,
-        percent: this._fishStamina.max > 0
-          ? this._fishStamina.current / this._fishStamina.max : 0,
-      },
-      playerStamina: {
-        current: this._playerStamina.current,
-        max: this._playerStamina.max,
-        percent: this._playerStamina.max > 0
-          ? this._playerStamina.current / this._playerStamina.max : 0,
-      },
-      notes: this._notes.map(n => ({
-        id: n.id,
-        expectedTime: n.expectedTime,
-        speed: n.speed,
-        type: n.type,
-        duration: n.duration,
-        holdActive: n.holdActive,
-        hit: n.hit,
-        missed: n.missed,
-        grade: n.grade,
-        animTimer: n.animTimer,
-        offset: n.getOffset(this._elapsed),
-        visible: n.isVisible(this._elapsed),
-        renderX: n.getRenderX(this._elapsed, 0),
-      })),
-      currentNoteIdx: this._currentNoteIdx,
-      combo: this._combo,
-      maxCombo: this._maxCombo,
-      isRaging: this._isRaging,
-      isFinished: this._finished,
-      result: this._result,
-      elapsed: this._elapsed,
-      lastGrade: this._lastGrade,
-      shake: { ...this._shake },
-      flashWhite: this._flashWhite,
-      floatingTexts: this._floatingTexts.map(ft => ({ ...ft })),
-    };
+    const v = this._view || (this._view = {});
+
+    v.fish = this._fish;
+    const fs = v.fishStamina || (v.fishStamina = {});
+    fs.current = this._fishStamina.current;
+    fs.max = this._fishStamina.max;
+    fs.percent = fs.max > 0 ? fs.current / fs.max : 0;
+
+    const ps = v.playerStamina || (v.playerStamina = {});
+    ps.current = this._playerStamina.current;
+    ps.max = this._playerStamina.max;
+    ps.percent = ps.max > 0 ? ps.current / ps.max : 0;
+
+    v.notes = this._updateNoteViews();
+    v.currentNoteIdx = this._currentNoteIdx;
+    v.combo = this._combo;
+    v.maxCombo = this._maxCombo;
+    v.isRaging = this._isRaging;
+    v.isFinished = this._finished;
+    v.result = this._result;
+    v.elapsed = this._elapsed;
+    v.lastGrade = this._lastGrade;
+
+    const sh = v.shake || (v.shake = {});
+    sh.x = this._shake.x;
+    sh.y = this._shake.y;
+    sh.remaining = this._shake.remaining;
+    v.flashWhite = this._flashWhite;
+    v.floatingTexts = this._updateTextViews();
+    return v;
   }
 
   /** @returns {boolean} */

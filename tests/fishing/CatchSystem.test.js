@@ -266,6 +266,33 @@ test('hold 卡顿鲁棒: 大 dt 帧 + 持续按住(保活) 不会被超时保护
   assert.equal(cs.getState().notes[0].hit, true);
 });
 
+test('低帧率输入精确判定: 判定基于输入事件时间戳而非帧时间', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
+  // 模拟帧率极低：_elapsed 几乎未推进(0ms)，但玩家在真实时间 1500ms 按下
+  cs._gameStartReal = 100000;
+  const r = cs.handleInput(100000 + 1500); // 事件时间戳 = 基准 + 1500
+  assert.equal(r.grade, 'perfect', '应基于事件时间戳判定 Perfect');
+  assert.equal(cs.getState().notes[0].hit, true);
+});
+
+test('低帧率下 hold 头判/尾判同样精确（事件时间戳）', () => {
+  const cs = new CatchSystem();
+  cs.start(FISH);
+  const n = makeHoldNote(cs);
+  n.duration = 600;
+  cs._notes = cs._notes.slice(0, 1);
+  cs._gameStartReal = 100000;
+
+  const head = cs.handleInput(100000 + n.expectedTime);
+  assert.equal(head.grade, 'perfect');
+  assert.equal(head.holdActive, true);
+
+  const tail = cs.handleHoldRelease(100000 + n.expectedTime + n.duration);
+  assert.equal(tail.grade, 'perfect');
+  assert.equal(cs.getState().notes[0].hit, true);
+});
+
 test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   const cs = new CatchSystem();
   cs.start(FISH_HARD);
