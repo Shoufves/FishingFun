@@ -48,6 +48,13 @@ test('装备越好目标区越宽（精度属性影响）', () => {
   assert.ok(highW > lowW);
 });
 
+test('完美区缩小至约 2.5%（基础装备，原 8%~10%）', () => {
+  const equip = { rod: { precision: 10 }, line: { sensitivity: 8 }, hook: { sharpness: 8 } };
+  const cs = new CastingSystem(equip);
+  const w = cs.getPerfectZone().end - cs.getPerfectZone().start;
+  assert.ok(w < 3.5 && w >= 2, '完美区宽度应约为 2.5%，实际 ' + w.toFixed(2));
+});
+
 test('就绪态与开始后目标区一致（无 clamp 突变）', () => {
   const equip = { rod: { precision: 10 }, line: { sensitivity: 8 }, hook: { sharpness: 8 } };
   const cs = new CastingSystem(equip);

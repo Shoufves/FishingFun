@@ -12,31 +12,32 @@
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
 /**
- * 抛竿目标区宽度
+ * 抛竿目标区宽度（T-021 平衡：整体缩小至约 1/4，提高精准度要求）
  * 来源：spec.md 2.1.2
- * @param {number} baseWidth - 基础目标区宽度百分比 (默认 20)
+ * @param {number} baseWidth - 基础目标区宽度百分比 (默认 2.5)
  * @param {number} rodPrecision - 钓竿精度 0-100
  * @param {number} lineSensitivity - 鱼线灵敏度 0-100
  * @param {number} hookSharpness - 鱼钩锋利度 0-100
  * @returns {number} 目标区宽度百分比
  */
-function calcPerfectZoneWidth(baseWidth = 20, rodPrecision = 50, lineSensitivity = 50, hookSharpness = 50) {
+function calcPerfectZoneWidth(baseWidth = 2.5, rodPrecision = 50, lineSensitivity = 50, hookSharpness = 50) {
   const p = rodPrecision / 100;
   const s = lineSensitivity / 100;
   const h = hookSharpness / 100;
   const width = baseWidth * (1 + p * 0.3 + s * 0.2 + h * 0.2);
   if (DEBUG) console.log('[Formula] calcPerfectZoneWidth:', { baseWidth, rodPrecision, lineSensitivity, hookSharpness, result: width });
-  return Math.max(10, Math.min(50, width));
+  return Math.max(2.5, Math.min(40, width));
 }
 
 /**
  * 抛竿光标移动速度 (百分比/秒)
  * 来源：spec.md 2.1.1（精度越高光标越慢，越容易瞄准）
+ * T-021 平衡：基准 83→50，配合目标区缩小保持 Perfect 判定窗口约 ±25ms
  * @param {number} rodPrecision - 钓竿精度 0-100
- * @returns {number} 光标速度 (百分比/秒，默认约 83)
+ * @returns {number} 光标速度 (百分比/秒)
  */
 function calcCastSpeed(rodPrecision = 50) {
-  const baseSpeed = 83;
+  const baseSpeed = 50;
   const factor = 1 - (rodPrecision / 100) * 0.3;
   const speed = baseSpeed * Math.max(0.7, factor);
   if (DEBUG) console.log('[Formula] calcCastSpeed:', { rodPrecision, result: speed });

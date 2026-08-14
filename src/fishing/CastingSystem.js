@@ -14,7 +14,8 @@ import { calcPerfectZoneWidth, calcCastSpeed } from './FormulaSheet.js';
 const CURSOR_WIDTH = 4;
 const MAX_ROUND_TRIPS = 3;
 const MAX_BOUNCES = MAX_ROUND_TRIPS * 2;
-const DEFAULT_PERFECT = 8;
+/** 完美区基础宽度（%）：T-021 平衡缩小至约 1/4 */
+const DEFAULT_PERFECT = 2.5;
 const DEFAULT_GOOD = 30;
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 

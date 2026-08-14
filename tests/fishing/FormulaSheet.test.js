@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * FormulaSheet 单元测试（T-012 公式中心）
@@ -30,8 +30,8 @@ test('calcCastSpeed: 精度越高光标越慢', () => {
   const slow = calcCastSpeed(100);
   const fast = calcCastSpeed(0);
   assert.ok(slow < fast);
-  assert.equal(calcCastSpeed(0), 83);
-  assert.ok(Math.abs(calcCastSpeed(100) - 58.1) < 1e-9); // 83 × 0.7
+  assert.equal(calcCastSpeed(0), 50);
+  assert.ok(Math.abs(calcCastSpeed(100) - 35) < 1e-9); // 50 × 0.7
 });
 
 test('calcWaitTime: 范围与方向正确（高吸引力更快）', () => {

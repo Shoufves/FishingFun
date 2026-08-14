@@ -10,7 +10,7 @@
 
 import { loadAllGameData } from './data/GameData.js';
 import { load as loadSave, save as saveSave, getSaveKey } from './core/SaveManager.js';
-import { ScreenRouter, ScreenType, TitleScreen, MapSelectScreen } from './core/ScreenRouter.js';
+import { ScreenRouter, Screen, ScreenType, TitleScreen, MapSelectScreen } from './core/ScreenRouter.js';
 import { Renderer } from './render/Renderer.js';
 import { BackgroundLayer } from './render/BackgroundLayer.js';
 import { WaterAnimation } from './render/WaterAnimation.js';
@@ -509,13 +509,15 @@ function handlePointerDown(clientX, clientY) {
   }
 }
 
-// 鼠标点击（触屏设备上已由 touchend 处理，350ms 内的合成 click 忽略）
+// 鼠标点击（触屏设备上已由 touch 系统处理，350ms 内的合成 click 忽略）
 canvas.addEventListener('click', (e) => {
   if (Date.now() - _lastTouchAt < TOUCH_CLICK_GUARD_MS) return;
   handlePointerDown(e.clientX, e.clientY);
 });
 
-/* --- 触控：触摸拖动滚动 + 点击分发（touchend 判定） --- */
+/* ============================================================
+   触控系统（参考现代 App：游戏内点击零延迟、列表触摸拖动+惯性）
+   ============================================================ */
 
 /** @type {number} 触摸起始 Y（CSS 像素） */
 let _touchStartY = 0;
@@ -523,20 +525,89 @@ let _touchStartY = 0;
 /** @type {number} 触摸起始 X */
 let _touchStartX = 0;
 
-/** @type {boolean} 本次触摸是否已判定为拖动（位移超阈值） */
+/** @type {boolean} 本次触摸是否已判定为拖动 */
 let _touchMoved = false;
 
-/** 拖动判定阈值（px），低于此位移视为点击 */
-const TOUCH_DRAG_THRESHOLD = 8;
+/** @type {{x:number, y:number}|null} 待分发点击（滚动屏延迟到 touchend） */
+let _pendingClick = null;
 
-// 触控点击（移动端）：touchstart 记录起点，touchend 判定拖动/点击
+/** @type {number} 上次 touchmove 的 Y（惯性速度计算） */
+let _lastMoveY = 0;
+
+/** @type {number} 内容滚动方向的速度（每事件近似，向上滑为负 dy） */
+let _touchVelocity = 0;
+
+/** @type {number} 惯性速度 */
+let _inertiaV = 0;
+
+/** @type {number|null} 惯性滚动定时器 */
+let _inertiaTimer = null;
+
+/** 拖动判定阈值（px），低于此位移视为点击 */
+const TOUCH_DRAG_THRESHOLD = 6;
+
+/** 惯性衰减系数（每 16ms） */
+const INERTIA_DAMP = 0.92;
+
+/** 惯性停止阈值 */
+const INERTIA_STOP = 2;
+
+/**
+ * 当前屏幕是否具备触摸滚动能力（覆盖了 scrollBy 的滚动型屏幕）
+ * @param {Screen|null} screen
+ * @returns {boolean}
+ */
+function screenSupportsScroll(screen) {
+  return !!(screen && typeof screen.scrollBy === 'function' &&
+    screen.scrollBy !== Screen.prototype.scrollBy);
+}
+
+/** 停止惯性滚动 */
+function stopInertia() {
+  if (_inertiaTimer !== null) {
+    clearInterval(_inertiaTimer);
+    _inertiaTimer = null;
+  }
+  _inertiaV = 0;
+}
+
+/** 启动惯性滚动（沿用最后滑动速度衰减） */
+function startInertia() {
+  if (Math.abs(_inertiaV) < INERTIA_STOP) return;
+  stopInertia();
+  _inertiaTimer = setInterval(() => {
+    if (!router) { stopInertia(); return; }
+    const s = router.getCurrentScreen();
+    if (!s || typeof s.scrollBy !== 'function' ||
+        s.scrollBy === Screen.prototype.scrollBy) {
+      stopInertia();
+      return;
+    }
+    if (Math.abs(_inertiaV) < INERTIA_STOP) { stopInertia(); return; }
+    s.scrollBy(_inertiaV);
+    _inertiaV *= INERTIA_DAMP;
+  }, 16);
+}
+
+// 触控：游戏内（无滚动）touchstart 立即判定（音游/蓄力零延迟）；
+// 滚动型屏幕 touchstart 记录、touchmove 拖动、touchend 判定点击
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
+  stopInertia();
   const touch = e.touches[0];
   if (!touch) return;
   _touchStartY = touch.clientY;
   _touchStartX = touch.clientX;
+  _lastMoveY = touch.clientY;
   _touchMoved = false;
+  _touchVelocity = 0;
+  _pendingClick = { x: touch.clientX, y: touch.clientY };
+  const screen = router ? router.getCurrentScreen() : null;
+  if (!screenSupportsScroll(screen)) {
+    // 音游/蓄力等游戏内操作：立即响应，避免触屏判定延迟
+    handlePointerDown(touch.clientX, touch.clientY);
+    _pendingClick = null;
+  }
 }, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
@@ -548,27 +619,28 @@ canvas.addEventListener('touchmove', (e) => {
   if (Math.abs(dy) > TOUCH_DRAG_THRESHOLD || Math.abs(dx) > TOUCH_DRAG_THRESHOLD) {
     _touchMoved = true;
   }
-  // 拖动时滚动当前屏幕（等价鼠标滚轮）
-  if (_touchMoved && router) {
-    const screen = router.getCurrentScreen();
-    if (screen && typeof screen.scrollBy === 'function') {
-      screen.scrollBy(dy);
-    }
-    _touchStartY = touch.clientY;
-    _touchStartX = touch.clientX;
+  if (!_touchMoved) return;
+  const screen = router ? router.getCurrentScreen() : null;
+  if (screenSupportsScroll(screen)) {
+    // 方向：手指上滑(dy<0) → 内容上移(scrollY 增大) → scrollBy(-dy)
+    screen.scrollBy(-dy);
+    _touchVelocity = -dy;
   }
+  _touchStartY = touch.clientY;
+  _touchStartX = touch.clientX;
+  _lastMoveY = touch.clientY;
 }, { passive: false });
 
 canvas.addEventListener('touchend', (e) => {
   e.preventDefault();
   _lastTouchAt = Date.now(); // 忽略随后的合成 click
-  if (_touchMoved) {
-    _touchMoved = false;
-    return; // 是拖动，不触发点击
+  if (_pendingClick && !_touchMoved) {
+    handlePointerDown(_pendingClick.x, _pendingClick.y);
   }
-  const touch = e.changedTouches[0];
-  if (touch) {
-    handlePointerDown(touch.clientX, touch.clientY);
+  _pendingClick = null;
+  if (_touchMoved) {
+    _inertiaV = _touchVelocity;
+    startInertia();
   }
   _touchMoved = false;
 }, { passive: false });
