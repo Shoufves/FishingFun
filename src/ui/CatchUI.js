@@ -183,6 +183,10 @@ class CatchUI {
       // 键从右边缘（progress=0）穿过目标区（progress=1）继续向左
       const noteX = targetX + (1 - visualProgress) * visibleRange;
 
+      const barW = 5;
+      const barPad = 4;
+      const barH = h - barPad * 2;
+
       // hold 长按键：长条渲染，头部在当前 noteX，尾部向右延伸
       if (note.type === 'hold') {
         this._drawHoldNote(ctx, note, noteX, y, barPad, h, x, w, visibleRange);
@@ -190,9 +194,6 @@ class CatchUI {
       }
 
       const hasAnim = note.animTimer > 0;
-      const barW = 5;
-      const barPad = 4;
-      const barH = h - barPad * 2;
 
       if (hasAnim) {
         const p = note.animTimer / 150;
