@@ -148,6 +148,16 @@ class EquipmentScreen extends Screen {
     this._scrollY = Math.max(0, Math.min(this._getScrollMax(), this._scrollY));
   }
 
+  /**
+   * 触摸拖动滚动（移动端）
+   * @param {number} deltaY
+   * @override
+   */
+  scrollBy(deltaY) {
+    this._scrollY += deltaY;
+    this._clampScroll();
+  }
+
   /* ============================================================
      渲染
      ============================================================ */

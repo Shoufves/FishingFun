@@ -48,6 +48,16 @@ test('装备越好目标区越宽（精度属性影响）', () => {
   assert.ok(highW > lowW);
 });
 
+test('就绪态与开始后目标区一致（无 clamp 突变）', () => {
+  const equip = { rod: { precision: 10 }, line: { sensitivity: 8 }, hook: { sharpness: 8 } };
+  const cs = new CastingSystem(equip);
+  const pBefore = cs.getPerfectZone();
+  const gBefore = cs.getGoodZone();
+  cs.start(equip);
+  assert.deepEqual(cs.getPerfectZone(), pBefore, 'perfect 区不应在开始后突变');
+  assert.deepEqual(cs.getGoodZone(), gBefore, 'good 区不应在开始后突变');
+});
+
 test('光标往返 3 次后自动失败', () => {
   const cs = new CastingSystem();
   cs.start(BASE_EQUIP);

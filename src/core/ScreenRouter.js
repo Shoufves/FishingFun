@@ -141,6 +141,14 @@ class Screen {
   render(ctx) {
     // 子类覆盖
   }
+
+  /**
+   * 触摸拖动滚动（移动端；默认不滚动，滚动型屏幕覆盖实现）
+   * @param {number} deltaY - 手指纵向位移（CSS 像素，向上拖动为负）
+   */
+  scrollBy(deltaY) {
+    // 子类覆盖
+  }
 }
 
 /* ============================================================
@@ -528,6 +536,16 @@ class MapSelectScreen extends Screen {
   _clampScroll() {
     const max = this._getScrollMax();
     this._scrollY = Math.max(0, Math.min(max, this._scrollY));
+  }
+
+  /**
+   * 触摸拖动滚动（移动端）
+   * @param {number} deltaY
+   * @override
+   */
+  scrollBy(deltaY) {
+    this._scrollY += deltaY;
+    this._clampScroll();
   }
 
   /** @returns {number} 最大可滚动量 */

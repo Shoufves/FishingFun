@@ -19,7 +19,10 @@ const DEFAULT_GOOD = 30;
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
 class CastingSystem {
-  constructor() {
+  /**
+   * @param {Object} [equipment] - 装备属性（用于就绪态预显示目标区，与开始后一致）
+   */
+  constructor(equipment) {
     this._progress = 0;
     this._direction = 1;
     this._speed = 83;
@@ -33,18 +36,16 @@ class CastingSystem {
     };
     this._isCasting = false;
     this._bounceCount = 0;
+    // 就绪态即按当前装备计算目标区，避免开始后 clamp 突变
+    this._applyZone(equipment || {});
   }
 
   /**
-   * 开始抛竿
-   * @param {Object} [equipment] - 装备属性
+   * 按装备计算目标区与光标速度（构造与 start 共用，保证一致）
+   * @param {Object} equipment
+   * @private
    */
-  start(equipment) {
-    this._progress = 0;
-    this._direction = 1;
-    this._isCasting = true;
-    this._bounceCount = 0;
-
+  _applyZone(equipment) {
     const eq = equipment || {};
     const rod = eq.rod || {};
     const line = eq.line || {};
@@ -66,8 +67,21 @@ class CastingSystem {
 
     // 光标速度受装备影响
     this._speed = calcCastSpeed(rod.precision);
+  }
+
+  /**
+   * 开始抛竿
+   * @param {Object} [equipment] - 装备属性
+   */
+  start(equipment) {
+    this._progress = 0;
+    this._direction = 1;
+    this._isCasting = true;
+    this._bounceCount = 0;
+    this._applyZone(equipment);
 
     if (DEBUG) {
+      const perfWidth = this._perfectZone.end - this._perfectZone.start;
       console.log('[Casting] 抛竿开始 perfect=' + perfWidth.toFixed(1) +
         '%, speed=' + this._speed.toFixed(1) + '%/s');
     }

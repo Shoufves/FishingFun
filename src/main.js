@@ -509,20 +509,68 @@ function handlePointerDown(clientX, clientY) {
   }
 }
 
-// 鼠标点击（触屏设备上 touchstart 已处理，350ms 内的合成 click 忽略）
+// 鼠标点击（触屏设备上已由 touchend 处理，350ms 内的合成 click 忽略）
 canvas.addEventListener('click', (e) => {
   if (Date.now() - _lastTouchAt < TOUCH_CLICK_GUARD_MS) return;
   handlePointerDown(e.clientX, e.clientY);
 });
 
-// 触控点击（移动端）
+/* --- 触控：触摸拖动滚动 + 点击分发（touchend 判定） --- */
+
+/** @type {number} 触摸起始 Y（CSS 像素） */
+let _touchStartY = 0;
+
+/** @type {number} 触摸起始 X */
+let _touchStartX = 0;
+
+/** @type {boolean} 本次触摸是否已判定为拖动（位移超阈值） */
+let _touchMoved = false;
+
+/** 拖动判定阈值（px），低于此位移视为点击 */
+const TOUCH_DRAG_THRESHOLD = 8;
+
+// 触控点击（移动端）：touchstart 记录起点，touchend 判定拖动/点击
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  _lastTouchAt = Date.now();
   const touch = e.touches[0];
+  if (!touch) return;
+  _touchStartY = touch.clientY;
+  _touchStartX = touch.clientX;
+  _touchMoved = false;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  if (!touch) return;
+  const dy = touch.clientY - _touchStartY;
+  const dx = touch.clientX - _touchStartX;
+  if (Math.abs(dy) > TOUCH_DRAG_THRESHOLD || Math.abs(dx) > TOUCH_DRAG_THRESHOLD) {
+    _touchMoved = true;
+  }
+  // 拖动时滚动当前屏幕（等价鼠标滚轮）
+  if (_touchMoved && router) {
+    const screen = router.getCurrentScreen();
+    if (screen && typeof screen.scrollBy === 'function') {
+      screen.scrollBy(dy);
+    }
+    _touchStartY = touch.clientY;
+    _touchStartX = touch.clientX;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  _lastTouchAt = Date.now(); // 忽略随后的合成 click
+  if (_touchMoved) {
+    _touchMoved = false;
+    return; // 是拖动，不触发点击
+  }
+  const touch = e.changedTouches[0];
   if (touch) {
     handlePointerDown(touch.clientX, touch.clientY);
   }
+  _touchMoved = false;
 }, { passive: false });
 
 /* ============================================================

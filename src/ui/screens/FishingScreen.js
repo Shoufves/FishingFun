@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * ============================================================
@@ -77,7 +77,7 @@ class FishingScreen extends Screen {
 
     this._params = params || {};
     this._mapName = this._lookupMapName(this._params.mapId);
-    this._castingSystem = new CastingSystem();
+    this._castingSystem = new CastingSystem(this._equipment);
     this._castingUI = new CastingUI();
     this._waitSystem = null;
     this._waitingUI = null;
@@ -605,7 +605,7 @@ class FishingScreen extends Screen {
     this._catchSystem = null;
     this._catchUI = null;
     this._hooking = { remaining: 0, total: 2000, fish: null };
-    this._castingSystem = new CastingSystem();
+    this._castingSystem = new CastingSystem(this._equipment);
     this._lastCastGrade = null;
     if (DEBUG) console.log('[Fishing] 回到就绪阶段');
   }
