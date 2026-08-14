@@ -293,6 +293,41 @@ test('低帧率下 hold 头判/尾判同样精确（事件时间戳）', () => {
   assert.equal(cs.getState().notes[0].hit, true);
 });
 
+test('补充键后判定连续性: 多次补充不破坏键序列与索引（防卡死回归）', () => {
+  const cs = new CatchSystem();
+  // 固定随机 → 纯 tap 序列（避免 hold 干扰顺序判定）
+  const origRandom = Math.random;
+  Math.random = () => 0.99;
+  try {
+    cs.start(FISH_HARD);
+  } finally {
+    Math.random = origRandom;
+  }
+  // 高鱼耐力：确保 40 键打完战斗不提前结束（本测试只验证索引连续性）
+  cs._fishStamina.max = 999999;
+  cs._fishStamina.current = 999999;
+
+  for (let k = 0; k < 40; k++) {
+    const note = cs._notes.find(n => !n.hit && !n.missed);
+    if (!note) break;
+    cs._elapsed = note.expectedTime;
+    const r = cs.handleInput();
+    assert.notEqual(r.grade, 'miss', '第 ' + k + ' 键应命中，实际 ' + r.grade);
+    cs.update(16); // 推进帧：触发 _checkAutoMiss / _extendNotes
+    // 索引一致性：idx 之前不应存在被跳过的未处理键
+    const skipped = cs._notes.slice(0, cs._currentNoteIdx)
+      .filter(n => !n.hit && !n.missed);
+    assert.equal(skipped.length, 0,
+      '第 ' + k + ' 键后 idx=' + cs._currentNoteIdx + ' 前有被跳过的未处理键');
+  }
+
+  // 最终 expectedTime 单调（渲染顺序正确）
+  for (let i = 1; i < cs._notes.length; i++) {
+    assert.ok(cs._notes[i].expectedTime >= cs._notes[i - 1].expectedTime,
+      'expectedTime 应单调');
+  }
+});
+
 test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   const cs = new CatchSystem();
   cs.start(FISH_HARD);

@@ -145,6 +145,10 @@ class CatchSystem {
     /** @type {Object|null} 状态视图单例（复用） */
     this._view = null;
 
+    /** @type {CatchNote[]} 备用键池（预生成，_extendNotes 时取出复用，
+     *  不 splice 主数组——避免破坏 _currentNoteIdx 索引导致判定卡死） */
+    this._spareNotes = [];
+
     this._reset();
   }
 
@@ -213,6 +217,7 @@ class CatchSystem {
     if (this._noteViews) this._noteViews.length = 0;
     if (this._textViews) this._textViews.length = 0;
     this._view = null;
+    this._spareNotes.length = 0;
   }
 
   /**
@@ -246,6 +251,12 @@ class CatchSystem {
 
     // 生成标记（含复杂键型）
     this._notes = this._buildNotes(fp, ra, noteCount);
+
+    // 预生成备用键池（_extendNotes 取用，避免运行期 new / splice 主数组）
+    const spareCount = 40;
+    for (let i = 0; i < spareCount; i++) {
+      this._spareNotes.push(new CatchNote(-1, 0, this._noteSpeed));
+    }
 
     this._currentNoteIdx = 0;
     this._elapsed = 0;
@@ -423,7 +434,8 @@ class CatchSystem {
   }
 
   /**
-   * 耐力未归零时持续补充标记（复用已处理键，避免每批 new 5 个对象的 GC 峰值）
+   * 耐力未归零时持续补充标记
+   * 从备用键池取键（只 push 不 splice，保证 _currentNoteIdx 索引稳定）
    */
   _extendNotes() {
     if (this._finished) return;
@@ -437,43 +449,23 @@ class CatchSystem {
       const step = this._isRaging ? this._noteInterval * 0.75 : this._noteInterval;
       const count = 5;
       for (let i = 0; i < count; i++) {
-        const note = this._obtainNote(baseIdx + i, nextTime + i * step, this._noteSpeed);
+        const note = this._spareNotes.pop() || new CatchNote(-1, 0, this._noteSpeed);
+        note.id = baseIdx + i;
+        note.expectedTime = nextTime + i * step;
+        note.speed = this._noteSpeed;
+        note.type = 'tap';
+        note.duration = 0;
+        note.hit = false;
+        note.missed = false;
+        note.grade = null;
+        note.animTimer = 0;
+        note.holdActive = false;
+        note.holdStart = 0;
+        note.lastKeydownAt = 0;
         this._notes.push(note);
       }
       if (DEBUG) console.log('[Catch] 补充 ' + count + ' 个标记');
     }
-  }
-
-  /**
-   * 获取一个可用的键：优先复用已处理（hit/missed）的键并移到数组末尾
-   * （保证 expectedTime 单调，渲染顺序正确），池满才新建
-   * @param {number} id
-   * @param {number} expectedTime
-   * @param {number} speed
-   * @returns {CatchNote}
-   * @private
-   */
-  _obtainNote(id, expectedTime, speed) {
-    for (let i = 0; i < this._notes.length; i++) {
-      const n = this._notes[i];
-      if (n.hit || n.missed) {
-        this._notes.splice(i, 1); // 从原位移除，由调用方 push 到末尾
-        n.id = id;
-        n.expectedTime = expectedTime;
-        n.speed = speed;
-        n.type = 'tap';
-        n.duration = 0;
-        n.hit = false;
-        n.missed = false;
-        n.grade = null;
-        n.animTimer = 0;
-        n.holdActive = false;
-        n.holdStart = 0;
-        n.lastKeydownAt = 0;
-        return n;
-      }
-    }
-    return new CatchNote(id, expectedTime, speed);
   }
 
   /**
