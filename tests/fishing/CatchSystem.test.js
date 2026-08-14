@@ -10,6 +10,15 @@ import assert from 'node:assert/strict';
 import { CatchSystem, CatchNote, HOLD_WINDOW_MS } from '../../src/fishing/CatchSystem.js';
 import { calcMarkerInterval, calcMarkerCount } from '../../src/fishing/FormulaSheet.js';
 
+/** Boss 测试鱼（需求2） */
+const BOSS_FISH = {
+  fishId: 'boss_001', fishName: '深渊巨鳗', rarity: 9, fightPower: 10,
+  stamina: 6000,
+  noteDensityMult: 0.8,
+  trait: { name: '痛击', playerDamageMult: 1.5 },
+  skill: { name: '甲壳屏障', type: 'immuneGood', duration: 3000, cooldown: 10000 },
+};
+
 /** 低耐力鱼：鲤鱼（FP=3, R=2） */
 const FISH = { fishId: 1, fishName: '鲤鱼', rarity: 2, fightPower: 3 };
 
@@ -25,8 +34,8 @@ test('耐力与伤害基础值正确', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const state = cs.getState();
-  assert.equal(state.fishStamina.max, 120);   // 3×20+2×12+36
-  assert.equal(state.playerStamina.max, 170);  // 50+20×3+50×0.5+35
+  assert.equal(state.fishStamina.max, 580);   // 3×60+2×150+100
+  assert.equal(state.playerStamina.max, 235);  // 50×1.5+20×4+50×0.6+50
   assert.equal(state.notes.length, 9);         // 4+floor(4.5)+floor(1)
 });
 
@@ -106,7 +115,7 @@ test('连击: 连续 3 次 Perfect 触发 ×1.5 暴击', () => {
 
   const s = cs.getState();
   assert.equal(s.combo, 3);
-  const expected = 180 - (baseDmg * 2 + baseDmg * 1.5); // 180 = 6×20+2×12+36
+  const expected = 760 - (baseDmg * 2 + baseDmg * 1.5); // 760 = 6×60+2×150+100
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
 });
 
@@ -143,7 +152,7 @@ test('hold: 头判命中 + 尾判完成，两段伤害但物量只 +1', () => {
 
   // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
   const s = cs.getState();
-  const expected = 120 - baseDmg - baseDmg * 0.6; // 120 = 3×20+2×12+36
+  const expected = 580 - baseDmg - baseDmg * 0.6; // 580 = 3×60+2×150+100
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
   assert.equal(n.hit, true, '尾判后键应消失');
 });
@@ -348,7 +357,7 @@ test('hold keyup 丢失: 超时自动按尾判完成结算', () => {
   const s = cs.getState();
   assert.equal(s.combo, 1);
   // 总伤害 = 头判 baseDmg + 尾判 baseDmg×0.6
-  const expected = 180 - baseDmg - baseDmg * 0.6; // 180 = 6×20+2×12+36
+  const expected = 760 - baseDmg - baseDmg * 0.6; // 760 = 6×60+2×150+100
   assert.ok(Math.abs(s.fishStamina.current - expected) <= 1);
 });
 
@@ -381,4 +390,79 @@ test('高难度鱼会生成 hold 复杂键型且标记数达标', () => {
   } finally {
     Math.random = origRandom;
   }
+});
+
+/* ============================================================
+   Boss 模式测试（需求2）
+   ============================================================ */
+
+test('Boss 血量与键密度生效', () => {
+  const cs = new CatchSystem();
+  cs.start(BOSS_FISH);
+  assert.equal(cs.getState().fishStamina.max, 6000, 'Boss 使用定义血量');
+  const base = calcMarkerInterval(10, 4.0);
+  assert.ok(cs.getNoteInterval() < base, 'Boss 键间隔应比普通传说鱼更密');
+});
+
+test('Boss 特性: 对玩家伤害提高（miss 扣 12% × 1.5）', () => {
+  const cs = new CatchSystem();
+  cs.start(BOSS_FISH);
+  cs._notes = cs._notes.slice(0, 1);
+  const playerMax = cs.getState().playerStamina.max;
+  cs._elapsed = cs._notes[0].expectedTime + 200; // 超过判定窗口
+  cs.update(0); // 触发自动 Miss
+  const s = cs.getState();
+  const expectedDrain = playerMax * 0.12 * 1.5;
+  assert.ok(Math.abs((playerMax - s.playerStamina.current) - expectedDrain) <= 1,
+    'Boss 特性应提高玩家受到的耐力伤害');
+});
+
+test('Boss 技能: 激活期间免疫 Good 伤害', () => {
+  const cs = new CatchSystem();
+  cs.start(BOSS_FISH);
+  cs._notes = cs._notes.slice(0, 1);
+  const n = cs._notes[0];
+  // 技能周期 13000ms，elapsed ∈ [0, 3000) 为激活期
+  cs._elapsed = n.expectedTime + 68; // Good（偏移 68ms ≤ 80）
+  const fishHpBefore = cs._fishStamina.current;
+  const r = cs.handleInput();
+  assert.equal(r.grade, 'good');
+  assert.equal(cs._fishStamina.current, fishHpBefore, '激活期间 Good 伤害应为 0');
+});
+
+test('Boss 技能: 冷却期 Good 伤害正常', () => {
+  const cs = new CatchSystem();
+  cs.start(BOSS_FISH);
+  cs._notes = cs._notes.slice(0, 1);
+  const n = cs._notes[0];
+  // 把键的预期时间放到冷却期（elapsed ∈ [3000, 13000)）
+  n.expectedTime = 4000;
+  cs._elapsed = 4000 + 68; // Good，elapsed=4068 处于冷却期
+  const fishHpBefore = cs._fishStamina.current;
+  const r = cs.handleInput();
+  assert.equal(r.grade, 'good');
+  assert.ok(cs._fishStamina.current < fishHpBefore, '冷却期 Good 伤害应正常');
+});
+
+test('Boss 技能判定逻辑（immuneGood / immunePerfectOnly）', () => {
+  const cs = new CatchSystem();
+  cs.start(BOSS_FISH);
+  cs._elapsed = 1000; // 激活期
+  assert.equal(cs._skillBlocksGrade('good'), true);
+  assert.equal(cs._skillBlocksGrade('perfect'), false);
+  cs._elapsed = 5000; // 冷却期
+  assert.equal(cs._skillBlocksGrade('good'), false);
+
+  // immunePerfectOnly：激活期仅 Perfect 有效
+  const cs3 = new CatchSystem();
+  cs3.start({
+    fishId: 'boss_003', fishName: '极光龙鲤', rarity: 10, fightPower: 10,
+    stamina: 8000,
+    trait: { playerDamageMult: 2.0 },
+    skill: { type: 'immunePerfectOnly', duration: 3000, cooldown: 10000 },
+  });
+  cs3._elapsed = 1000;
+  assert.equal(cs3._skillBlocksGrade('perfect'), false);
+  assert.equal(cs3._skillBlocksGrade('great'), true);
+  assert.equal(cs3._skillBlocksGrade('good'), true);
 });

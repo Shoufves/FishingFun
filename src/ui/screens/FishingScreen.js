@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 /**
  * ============================================================
@@ -77,6 +77,7 @@ class FishingScreen extends Screen {
 
     this._params = params || {};
     this._mapName = this._lookupMapName(this._params.mapId);
+    this._mapBonus = this._calcMapBonus(this._params.mapId);
     this._castingSystem = new CastingSystem(this._equipment);
     this._castingUI = new CastingUI();
     this._waitSystem = null;
@@ -252,6 +253,23 @@ class FishingScreen extends Screen {
     ctx.font = '11px Consolas,"Courier New",monospace';
     ctx.fillStyle = '#3a5a6a';
     ctx.fillText('ESC/Back \u8FD4\u56DE\u5730\u56FE', w - 16, 12);
+  }
+
+  /**
+   * 计算地图加成（需求3：难度越高，鱼数值/体型加成越高）
+   * @param {number|undefined} mapId
+   * @returns {number} 1 + (难度-1)×0.12
+   * @private
+   */
+  _calcMapBonus(mapId) {
+    try {
+      const maps = window.GameData ? window.GameData.MapDefinition : null;
+      const entry = maps && maps.find(m => m.mapId === (mapId || 1));
+      const diff = (entry && entry.difficulty) ? entry.difficulty : 1;
+      return 1 + (diff - 1) * 0.12;
+    } catch (e) {
+      return 1;
+    }
   }
 
   /**
@@ -545,9 +563,10 @@ class FishingScreen extends Screen {
     this._phase = Phase.CATCHING;
     this._statusText = null;
 
-    // 通过 FishGenerator 生成完整鱼实例
+    // 通过 FishGenerator 生成完整鱼实例（含地图/饵料体型加成）
     const generator = new FishGenerator();
-    const fishInstance = generator.generate(this._hooking.fish);
+    const baitSize = window._baitSystem ? window._baitSystem.getBaitSizeBonus() : 0;
+    const fishInstance = generator.generate(this._hooking.fish, 1, this._mapBonus, baitSize);
 
     this._catchSystem = new CatchSystem();
     this._catchUI = new CatchUI();
@@ -637,11 +656,13 @@ class FishingScreen extends Screen {
     if (!bs) return;
     const label = bs.getEquippedLabel();
     const attr = bs.getCurrentAttractiveness();
+    const sizeB = bs.getBaitSizeBonus();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.font = '12px Consolas,"Courier New",monospace';
     ctx.fillStyle = bs.getEquippedBait() !== null ? '#6a8a9a' : '#8a5650';
-    ctx.fillText('\u9975\u6599: ' + label + ' (ATTR:' + attr + ')', x + w / 2, y);
+    const sizeText = sizeB > 0 ? ' \u8EAB\u4F53+' + Math.round(sizeB * 100) + '%' : '';
+    ctx.fillText('\u9975\u6599: ' + label + ' (ATTR:' + attr + sizeText + ')', x + w / 2, y);
     ctx.font = '10px Consolas,"Courier New",monospace';
     ctx.fillStyle = '#3a5a6a';
     ctx.fillText('[1-9] switch  [B] cycle', x + w / 2, y + 16);

@@ -149,6 +149,18 @@ class BaitSystem {
   }
 
   /**
+   * 获取当前饵料提供的体型加成（需求4：高级饵料钓更大鱼）
+   * 基础饵/无饵料返回 0；Rarity N 饵 → (N-1)×6%
+   * @returns {number} 0~0.5
+   */
+  getBaitSizeBonus() {
+    if (!this._equipped || this._equipped === BASE_BAIT_ID) return 0;
+    const bait = this._findBait(this._equipped);
+    if (!bait || !bait.rarity) return 0;
+    return Math.min(0.5, (bait.rarity - 1) * 0.06);
+  }
+
+  /**
    * 获取当前装备饵料的完整属性
    * @returns {Object|null}
    */

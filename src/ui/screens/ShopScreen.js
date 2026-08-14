@@ -248,9 +248,14 @@ class ShopScreen extends Screen {
     // 副信息
     ctx.font = '11px Consolas, "Courier New", monospace';
     ctx.fillStyle = '#5a7a8a';
-    const sub = isEquip
-      ? (TYPE_NAMES[item.type] || item.type) + ' · ' + (qCfg ? qCfg.label : item.quality)
-      : (item.baitType || '') + ' · 吸引 ' + (item.attractiveness || 0);
+    let sub;
+    if (isEquip) {
+      sub = (TYPE_NAMES[item.type] || item.type) + ' · ' + (qCfg ? qCfg.label : item.quality);
+    } else {
+      const sizePct = ((item.rarity || 1) - 1) * 6;
+      sub = (item.baitType || '') + ' · 吸引 ' + (item.attractiveness || 0) +
+        (sizePct > 0 ? ' · 体型+' + sizePct + '%' : '');
+    }
     ctx.fillText(sub, cx - listW / 2 + 12, y + ROW_H / 2 + 12);
 
     // 右侧：状态/价格/购买按钮

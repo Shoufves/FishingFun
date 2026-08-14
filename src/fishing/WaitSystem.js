@@ -98,7 +98,7 @@ class WaitSystem {
   start(mapId, baitId, castGrade, equipment) {
     this._mapId = mapId;
     this._gradeMultiplier = this._getGradeMultiplier(castGrade);
-    this._selectedFish = this._selectFish(mapId);
+    this._selectedFish = this._selectFish(mapId, baitId);
     this._baitAttractiveness = this._findBaitAttractiveness(baitId);
     this._equipment = equipment || {};
 
@@ -272,6 +272,39 @@ class WaitSystem {
   }
 
   /**
+   * 获取地图难度（需求3：高级钓场加成基础）
+   * @param {number} mapId
+   * @returns {number} 难度 1-10
+   */
+  _getMapDifficulty(mapId) {
+    try {
+      const maps = window.GameData ? window.GameData.MapDefinition : null;
+      if (!maps) return 1;
+      const entry = maps.find(m => m.mapId === mapId);
+      return (entry && entry.difficulty) ? entry.difficulty : 1;
+    } catch (e) {
+      return 1;
+    }
+  }
+
+  /**
+   * 查询饵料目标类别（需求4：类别匹配加成）
+   * @param {number} baitId
+   * @returns {string|null}
+   */
+  _findBaitCategory(baitId) {
+    if (!baitId) return null;
+    try {
+      const baits = window.GameData ? window.GameData.BaitTable : null;
+      if (!baits) return null;
+      const b = baits.find(x => x.baitId === baitId);
+      return b ? b.targetCategory : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * 查找饵料吸引力（无饵料时返回基础吸引力）
    * @param {number} baitId
    * @returns {number}
@@ -290,10 +323,14 @@ class WaitSystem {
 
   /**
    * 从 MapFishSpawn 根据权重随机选择一条鱼
+   * 加成（需求3/4）：
+   *   - 高级钓场（难度高）→ 稀有鱼(Rarity≥5) 权重 ×(1+(难度-1)×0.15)
+   *   - 饵料 TargetCategory 与鱼类别匹配 → 该鱼权重 ×1.5
    * @param {number} mapId
+   * @param {number} [baitId] - 当前饵料 ID（类别匹配用）
    * @returns {Object|null} { fishId, fishName, rarity, ... }
    */
-  _selectFish(mapId) {
+  _selectFish(mapId, baitId) {
     try {
       const spawnData = window.GameData ? window.GameData.MapFishSpawn : null;
       const fishData = window.GameData ? window.GameData.FishTable : null;
@@ -303,24 +340,42 @@ class WaitSystem {
       const entries = spawnData.filter(s => s.mapId === mapId);
       if (entries.length === 0) return this._fallbackFish();
 
-      // 加权随机
-      const totalWeight = entries.reduce((sum, e) => sum + e.spawnWeight, 0);
+      const difficulty = this._getMapDifficulty(mapId);
+      const baitCategory = this._findBaitCategory(baitId);
+
+      // 加权随机（含稀有度/饵料加成）
+      const weighted = [];
+      let totalWeight = 0;
+      for (const entry of entries) {
+        let w = entry.spawnWeight || 0;
+        const fish = fishData.find(f => f.fishId === entry.fishId);
+        if (fish) {
+          if (fish.rarity >= 5) {
+            w *= (1 + (difficulty - 1) * 0.15);
+          }
+          if (baitCategory && fish.category === baitCategory) {
+            w *= 1.5;
+          }
+        }
+        weighted.push({ entry, fish, weight: w });
+        totalWeight += w;
+      }
       if (totalWeight <= 0) return this._fallbackFish();
 
       let r = Math.random() * totalWeight;
       let cumulative = 0;
-      let selectedSpawn = entries[entries.length - 1];
+      let selectedSpawn = weighted[weighted.length - 1];
 
-      for (const entry of entries) {
-        cumulative += entry.spawnWeight;
+      for (const item of weighted) {
+        cumulative += item.weight;
         if (cumulative > r) {
-          selectedSpawn = entry;
+          selectedSpawn = item;
           break;
         }
       }
 
       // 查找鱼的定义
-      const fish = fishData.find(f => f.fishId === selectedSpawn.fishId);
+      const fish = selectedSpawn.fish;
       if (!fish) return this._fallbackFish();
 
       return {

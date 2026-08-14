@@ -23,6 +23,8 @@ const ScreenType = Object.freeze({
   FISH_DEX:    'FISH_DEX',
   AQUARIUM:    'AQUARIUM',
   SETTINGS:    'SETTINGS',
+  BOSS_SELECT: 'BOSS_SELECT',
+  BOSS_BATTLE: 'BOSS_BATTLE',
 });
 
 /* ============================================================
@@ -593,6 +595,15 @@ class MapSelectScreen extends Screen {
     ctx.fillStyle = '#c8e8d0';
     ctx.fillText('🛒 商店', w - 66, 30);
 
+    // BOSS 挑战入口
+    ctx.fillStyle = '#4a2a20';
+    ctx.fillRect(w - 224, 12, 100, 36);
+    ctx.fillStyle = '#6a3a2a';
+    ctx.fillRect(w - 222, 14, 96, 32);
+    ctx.font = 'bold 14px Consolas, "Courier New", monospace';
+    ctx.fillStyle = '#f0c090';
+    ctx.fillText('⚔ BOSS', w - 174, 30);
+
     // 分隔线
     ctx.strokeStyle = '#3a5a6a';
     ctx.lineWidth = 1;
@@ -758,6 +769,11 @@ class MapSelectScreen extends Screen {
     // 商店快捷入口
     this._addClickRegion(w - 116, 12, 100, 36, () => {
       this.router.push(ScreenType.SHOP);
+    });
+
+    // BOSS 挑战入口
+    this._addClickRegion(w - 224, 12, 100, 36, () => {
+      this.router.push(ScreenType.BOSS_SELECT);
     });
 
     // 地图列表

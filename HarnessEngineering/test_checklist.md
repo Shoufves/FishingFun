@@ -74,8 +74,8 @@
 | U-028 | Good 窗口 50-80ms → 正确输出 Good | within 80ms → 'Good' | P0 |
 | U-029 | >80ms → Miss | beyond 80ms → 'Miss' | P0 |
 | U-030 | 移动速度与 FightPower 正相关 | higher FP → faster speed | P1 |
-| U-031 | 鱼耐力公式正确：FP×20+Rarity×12+36 | 验证计算值准确 | P0 |
-| U-032 | 玩家耐力公式正确：强度×1.0+刹车×3.0+拉力×0.5+35 | 各种装备配置下值合理 | P0 |
+| U-031 | 鱼耐力公式正确：FP×60+Rarity×150+100（四星过千） | 验证计算值准确 | P0 |
+| U-032 | 玩家耐力公式正确：强度×1.5+刹车×4.0+拉力×0.6+50 | 各种装备配置下值合理 | P0 |
 | U-033 | Perfect 对鱼造成全额伤害，玩家不掉耐 | dmg=baseDmg×1.0, plyStamina不变 | P0 |
 | U-034 | Great 对鱼造成 0.75x 伤害，玩家掉 2% | dmg=baseDmg×0.75, plyStamina-2% | P0 |
 | U-035 | Good 对鱼造成 0.5x 伤害，玩家掉 5% | dmg=baseDmg×0.50, plyStamina-5% | P0 |

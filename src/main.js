@@ -22,6 +22,8 @@ import { ShopScreen } from './ui/screens/ShopScreen.js';
 import { EquipmentScreen } from './ui/screens/EquipmentScreen.js';
 import { FishDexScreen } from './ui/screens/FishDexScreen.js';
 import { SettingsScreen } from './ui/screens/SettingsScreen.js';
+import { BossSelectScreen } from './ui/screens/BossSelectScreen.js';
+import { BossBattleScreen } from './ui/screens/BossBattleScreen.js';
 import { EquipmentManager } from './systems/EquipmentManager.js';
 import { EQUIPMENT_LIBRARY } from './data/EquipmentData.js';
 import { BaitSystem } from './systems/BaitSystem.js';
@@ -309,6 +311,7 @@ async function bootGame() {
         aquarium: { slots: [], capacity: 10 },
         settings: { musicVolume: 0.7, sfxVolume: 1.0, language: 'zh' },
         unlockedMaps: [1],
+        bossDefeated: [],
         timestamp: Date.now(),
       };
       saveSave(saveData);
@@ -441,6 +444,8 @@ async function bootGame() {
     router.register(ScreenType.EQUIPMENT, () => new EquipmentScreen(router));
     router.register(ScreenType.FISH_DEX, () => new FishDexScreen(router));
     router.register(ScreenType.SETTINGS, () => new SettingsScreen(router));
+    router.register(ScreenType.BOSS_SELECT, () => new BossSelectScreen(router));
+    router.register(ScreenType.BOSS_BATTLE, () => new BossBattleScreen(router));
 
     // BGM 路由：只在明确需要切换 BGM 的屏幕触发
     // 标题/地图选择共用 title，钓鱼/其他用各自 BGM

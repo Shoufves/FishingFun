@@ -112,35 +112,35 @@ function calcMarkerInterval(fightPower, reelGearRatio = 4.0) {
 }
 
 /**
- * 鱼最大耐力（高难鱼更难磨死）
- * 来源：spec.md 2.3.2（T-021 平衡二轮：×14→×20、×8→×12、+24→+36）
+ * 鱼最大耐力（大幅调高：四星鱼血量过千）
+ * 来源：spec.md 2.3.2（T-021 平衡三轮：FP×20+R×12+36 → FP×60+R×150+100）
  * @param {number} fightPower - 挣扎强度 1-10
  * @param {number} rarity - 稀有度 1-10
  * @returns {number}
  */
 function calcFishStamina(fightPower, rarity) {
-  const stamina = fightPower * 20 + rarity * 12 + 36;
+  const stamina = fightPower * 60 + rarity * 150 + 100;
   if (DEBUG) console.log('[Formula] calcFishStamina:', { fightPower, rarity, result: stamina });
   return stamina;
 }
 
 /**
- * 玩家最大耐力（更脆弱：容错降低，miss 代价更重）
- * 来源：spec.md 2.3.2（T-021 平衡二轮：×1.1→×1.0、×3.5→×3.0、+40→+35）
+ * 玩家最大耐力（配合高血量适度上调，保证高难鱼可挑战）
+ * 来源：spec.md 2.3.2（T-021 平衡三轮：×1.0/×3.0/×0.5/+35 → ×1.5/×4.0/×0.6/+50）
  * @param {number} rodStrength - 钓竿强度 0-100
  * @param {number} reelDrag - 渔轮刹车力 1-30
  * @param {number} lineTensile - 鱼线拉力 0-100
  * @returns {number}
  */
 function calcPlayerStamina(rodStrength = 50, reelDrag = 20, lineTensile = 50) {
-  const stamina = rodStrength * 1.0 + reelDrag * 3.0 + lineTensile * 0.5 + 35;
+  const stamina = rodStrength * 1.5 + reelDrag * 4.0 + lineTensile * 0.6 + 50;
   if (DEBUG) console.log('[Formula] calcPlayerStamina:', { rodStrength, reelDrag, lineTensile, result: stamina });
   return Math.max(50, stamina);
 }
 
 /**
- * 基础伤害（整体下调，拉长战斗时间）
- * 来源：spec.md 2.3.4（T-021 平衡二轮：/20→/21、/11→/12、×1.4→×1.3、/14→/15）
+ * 基础伤害（随血量整体上调，战斗时长保持 5~20 秒区间）
+ * 来源：spec.md 2.3.4（T-021 平衡三轮：/21→/8、/12→/4、×1.3→×2.5、/15→/6）
  * @param {number} rodStrength - 钓竿强度 0-100
  * @param {number} hookSharpness - 鱼钩锋利度 0-100
  * @param {number} reelGearRatio - 渔轮速比 3.0-8.0
@@ -148,9 +148,9 @@ function calcPlayerStamina(rodStrength = 50, reelDrag = 20, lineTensile = 50) {
  * @returns {number}
  */
 function calcBaseDamage(rodStrength = 50, hookSharpness = 50, reelGearRatio = 4.0, lineTensile = 50) {
-  const damage = rodStrength / 21 + hookSharpness / 12 + reelGearRatio * 1.3 + lineTensile / 15;
+  const damage = rodStrength / 8 + hookSharpness / 4 + reelGearRatio * 2.5 + lineTensile / 6;
   if (DEBUG) console.log('[Formula] calcBaseDamage:', { rodStrength, hookSharpness, reelGearRatio, lineTensile, result: damage });
-  return Math.max(5, damage);
+  return Math.max(10, damage);
 }
 
 export {

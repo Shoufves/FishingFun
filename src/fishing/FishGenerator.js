@@ -34,6 +34,12 @@ const QUALITY_THRESHOLDS = [
 /** @type {boolean} */
 const DEBUG = typeof window !== 'undefined' && window.__DEBUG__ === true;
 
+import { calcFishStamina } from './FormulaSheet.js';
+
+/* ============================================================
+   FishGenerator 类
+   ============================================================ */
+
 /* ============================================================
    FishGenerator 类
    ============================================================ */
@@ -43,10 +49,11 @@ class FishGenerator {
    * 生成一条完整的鱼实例
    * @param {Object} fishDef - 鱼种定义（来自 FishTable）
    * @param {number} [playerLevel=1] - 玩家等级
-   * @param {number} [mapBonus=1.0] - 地图加成倍率
+   * @param {number} [mapBonus=1.0] - 地图加成（高级钓场血量/体型加成，1=无加成）
+   * @param {number} [baitSizeBonus=0] - 饵料体型加成（0~1，高级饵料钓更大鱼）
    * @returns {Object} FishInstance
    */
-  generate(fishDef, playerLevel = 1, mapBonus = 1.0) {
+  generate(fishDef, playerLevel = 1, mapBonus = 1.0, baitSizeBonus = 0) {
     let length = this._generateLength(fishDef);
     let mutationLevel = 0;
     let finalLength = length;
@@ -59,6 +66,10 @@ class FishGenerator {
         length = finalLength;
       }
     }
+
+    // 地图 + 饵料体型加成（高级钓场/高级饵料 → 体型更大）
+    const sizeBonus = (mapBonus - 1) * 0.33 + (baitSizeBonus || 0);
+    length = length * (1 + sizeBonus);
 
     const weight = this._calculateWeight(fishDef, length);
     const quality = this._determineQuality(fishDef, length);
@@ -84,6 +95,8 @@ class FishGenerator {
       habitatLayer: fishDef.habitatLayer || '底层',
       activeTime: fishDef.activeTime || '全天',
       caughtAt: Date.now(), // T-011.1: 捕获时间戳
+      // 血量（地图加成后；CatchSystem 优先使用此值）
+      stamina: Math.round(calcFishStamina(fishDef.fightPower || 1, fishDef.rarity || 1) * mapBonus),
     };
 
     if (DEBUG) {

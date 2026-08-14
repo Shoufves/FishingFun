@@ -29,6 +29,8 @@ import { ShopScreen } from '../src/ui/screens/ShopScreen.js';
 import { EquipmentScreen } from '../src/ui/screens/EquipmentScreen.js';
 import { FishDexScreen } from '../src/ui/screens/FishDexScreen.js';
 import { SettingsScreen } from '../src/ui/screens/SettingsScreen.js';
+import { BossSelectScreen } from '../src/ui/screens/BossSelectScreen.js';
+import { BossBattleScreen } from '../src/ui/screens/BossBattleScreen.js';
 import { ScreenRouter, TitleScreen, MapSelectScreen } from '../src/core/ScreenRouter.js';
 
 /** 无操作 Canvas 2D 上下文代理 */
@@ -320,6 +322,20 @@ test('全部屏幕 render 不抛错（含各阶段）', async () => {
   settings.onEnter();
   settings.render(ctx);
   settings.onExit();
+
+  // Boss 选择 / Boss 战斗
+  const bossSel = new BossSelectScreen(router);
+  bossSel.onEnter();
+  bossSel.render(ctx);
+  assert.equal(bossSel._getScrollMax() >= 0, true);
+  bossSel.onExit();
+
+  const bossBat = new BossBattleScreen(router);
+  bossBat.onEnter({ bossId: 'boss_001' });
+  bossBat.render(ctx);
+  bossBat.update(16);
+  bossBat.render(ctx);
+  bossBat.onExit();
 
   // 竖屏窄窗：设置页渲染不抛错，音量行元素不超出行边界
   const origW = window.innerWidth;

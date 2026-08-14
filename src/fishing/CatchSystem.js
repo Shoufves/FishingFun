@@ -3,8 +3,8 @@
 /**
  * ============================================================
  * src/fishing/CatchSystem.js — 收线搏鱼逻辑系统
- * 版本: 2.0 (T-009.1: 复杂键型)
- * 职责: 双耐力管理、判定标记生成与移动、伤害计算、狂暴与连击
+ * 版本: 3.0 (Boss 模式支持)
+ * 职责: 双耐力管理、判定标记生成与移动、伤害计算、狂暴与连击、Boss 特性/技能
  * 键型: tap(单点) / hold(长按) / double(双连击) / triplet(三连滚奏) / accel(变速段)
  * 约定: 纯逻辑，不依赖 UI 或渲染代码
  * ============================================================
@@ -63,8 +63,12 @@ const TAIL_DMG_MULT = Object.freeze({
 });
 
 import {
-  calcFishStamina, calcPlayerStamina, calcBaseDamage,
-  calcMarkerCount, calcMarkerSpeed, calcMarkerInterval,
+  calcFishStamina,
+  calcPlayerStamina,
+  calcBaseDamage,
+  calcMarkerCount,
+  calcMarkerSpeed,
+  calcMarkerInterval,
 } from './FormulaSheet.js';
 
 /**
@@ -214,6 +218,12 @@ class CatchSystem {
     /** @type {Array} 浮动伤害数字 */
     this._floatingTexts = [];
 
+    /** @type {Object|null} Boss 特性（需求2） */
+    this._bossTrait = null;
+
+    /** @type {Object|null} Boss 技能（需求2） */
+    this._bossSkill = null;
+
     if (this._noteViews) this._noteViews.length = 0;
     if (this._textViews) this._textViews.length = 0;
     this._view = null;
@@ -222,7 +232,7 @@ class CatchSystem {
 
   /**
    * 开始搏鱼小游戏
-   * @param {Object} fish - 鱼数据 { fishId, fishName, rarity, fightPower, ... }
+   * @param {Object} fish - 鱼数据 { fishId, fishName, rarity, fightPower, stamina?, trait?, skill? }
    * @param {Object} [equip] - 装备属性，不传则用占位
    */
   start(fish, equip) {
@@ -235,18 +245,33 @@ class CatchSystem {
     // 真实时间基准（用于输入时刻精确判定，参考 osu：判定不依赖帧率）
     this._gameStartReal = (typeof performance !== 'undefined') ? performance.now() : 0;
 
-    // 耐力（FormulaSheet calcFishStamina / calcPlayerStamina）
-    this._fishStamina.max = calcFishStamina(fp, ra);
+    // 耐力（优先使用实例携带的 stamina——含地图/Boss 加成；否则按公式）
+    this._fishStamina.max = (typeof fish.stamina === 'number' && fish.stamina > 0)
+      ? fish.stamina
+      : calcFishStamina(fp, ra);
     this._fishStamina.current = this._fishStamina.max;
-    this._playerStamina.max = calcPlayerStamina(eq.rod.strength, eq.reel.dragPower, eq.line.tensile);
-    this._playerStamina.current = this._playerStamina.max;
+
+    // Boss 特性/技能（需求2）
+    this._bossTrait = fish.trait || null;
+    this._bossSkill = fish.skill || null;
+
+    // 玩家耐力（Boss 特性可能降低上限）
+    let pMax = calcPlayerStamina(eq.rod.strength, eq.reel.dragPower, eq.line.tensile);
+    if (this._bossTrait && this._bossTrait.playerStaminaMult) {
+      pMax = Math.floor(pMax * this._bossTrait.playerStaminaMult);
+    }
+    this._playerStamina.max = pMax;
+    this._playerStamina.current = pMax;
 
     // 基础伤害（FormulaSheet calcBaseDamage）
     this._baseDamage = calcBaseDamage(eq.rod.strength, eq.hook.sharpness, eq.reel.gearRatio, eq.line.tensile);
 
-    // 标记参数（FormulaSheet calcMarkerCount/Speed/Interval）
+    // 标记参数（FormulaSheet calcMarkerCount/Speed/Interval；Boss 键型更密集）
     const noteCount = calcMarkerCount(fp, ra);
     this._noteInterval = calcMarkerInterval(fp, eq.reel.gearRatio);
+    if (fish.noteDensityMult) {
+      this._noteInterval = this._noteInterval * fish.noteDensityMult;
+    }
     this._noteSpeed = calcMarkerSpeed(fp, ra, eq.reel.gearRatio);
 
     // 生成标记（含复杂键型）
@@ -381,8 +406,7 @@ class CatchSystem {
     }
 
     // hold 超时保护：keyup 丢失时按尾判完成结算
-    // 卡顿鲁棒：仅当"尾部已过 150ms 且 300ms 内无按键活动"才触发，
-    // 否则玩家持续按住（keydown 保活）时不会因帧率低被误杀
+    // 卡顿鲁棒：仅当"尾部已过 150ms 且 300ms 内无按键活动"才触发
     for (const note of this._notes) {
       if (!note.holdActive) continue;
       const tailPassed = this._elapsed > note.holdStart + note.duration + HOLD_WINDOW_MS;
@@ -400,7 +424,6 @@ class CatchSystem {
     const ratio = this._fishStamina.current / this._fishStamina.max;
     if (!this._isRaging && ratio < RAGE_THRESHOLD) {
       this._isRaging = true;
-      // 后续所有未处理的标记速度 +20%（不改变 expectedTime，避免了瞬移bug）
       for (let i = this._currentNoteIdx; i < this._notes.length; i++) {
         const note = this._notes[i];
         if (!note.hit && !note.missed) {
@@ -434,8 +457,7 @@ class CatchSystem {
   }
 
   /**
-   * 耐力未归零时持续补充标记
-   * 从备用键池取键（只 push 不 splice，保证 _currentNoteIdx 索引稳定）
+   * 耐力未归零时持续补充标记（从备用键池取键，只 push 不 splice）
    */
   _extendNotes() {
     if (this._finished) return;
@@ -492,7 +514,6 @@ class CatchSystem {
     if (this._finished) return { grade: 'miss', combo: this._combo, damage: 0 };
     const judgeTime = this._resolveJudgeTime(eventStamp);
 
-    // 找到当前未处理的标记
     while (this._currentNoteIdx < this._notes.length) {
       const note = this._notes[this._currentNoteIdx];
       if (note.hit || note.missed) {
@@ -500,8 +521,7 @@ class CatchSystem {
         continue;
       }
 
-      // hold 长按进行中：忽略重复 keydown（等待 keyup 尾判），
-      // 防止把进行中的 hold 键当普通键打掉；同时刷新保活时间戳
+      // hold 长按进行中：忽略重复 keydown（等待 keyup 尾判）
       if (note.type === 'hold' && note.holdActive) {
         note.lastKeydownAt = judgeTime;
         return { grade: 'hold', combo: this._combo, damage: 0, holdActive: true };
@@ -510,13 +530,12 @@ class CatchSystem {
       // hold 键：头判
       if (note.type === 'hold' && !note.holdActive) {
         if (judgeTime < note.expectedTime - HOLD_WINDOW_MS) {
-          return { grade: 'miss', combo: this._combo, damage: 0 }; // 太早，可再按
+          return { grade: 'miss', combo: this._combo, damage: 0 };
         }
         if (judgeTime <= note.expectedTime + HOLD_WINDOW_MS) {
           const offset = note.getTimeOffset(judgeTime);
           const grade = this._judgeNote(note, offset);
           if (grade === 'miss') {
-            // 头判偏差过大 → 整体 Miss
             this._applyMiss(note);
             this._currentNoteIdx++;
             return { grade: 'miss', combo: this._combo, damage: 0 };
@@ -524,27 +543,20 @@ class CatchSystem {
           this._applyHoldHead(note, grade, judgeTime);
           return { grade, combo: this._combo, damage: this._lastDamage || 0, holdActive: true };
         }
-        // 头部窗口已过且未按 → 自动 Miss
         this._applyMiss(note);
         this._currentNoteIdx++;
         continue;
       }
 
       const offset = note.getTimeOffset(judgeTime);
-
-      // 标记还远未到 → 太早，Miss
       if (judgeTime < note.expectedTime - 150) {
         return { grade: 'miss', combo: this._combo, damage: 0 };
       }
-
-      // 在判定窗口内
       if (offset <= 150) {
         const grade = this._judgeNote(note, offset);
         this._applyHit(note, grade, undefined, judgeTime);
         return { grade, combo: this._combo, damage: this._lastDamage || 0 };
       }
-
-      // 标记已过 → Miss 并移动到下一个
       this._applyMiss(note);
       this._currentNoteIdx++;
     }
@@ -555,7 +567,6 @@ class CatchSystem {
 
   /**
    * 处理玩家松开（keyup）——hold 尾判（不改变 combo 物量）
-   * 窗口: |偏移|≤150ms → perfect；≤300ms → good；更早松 → miss（断连击）
    * @param {number} [eventStamp] - 输入事件时间戳（可选）
    * @returns {{ grade: string, combo: number, damage: number, hold?: boolean }}
    */
@@ -566,17 +577,14 @@ class CatchSystem {
     for (const note of this._notes) {
       if (!note.holdActive) continue;
       const tailOffset = judgeTime - (note.holdStart + note.duration);
-
       if (Math.abs(tailOffset) <= HOLD_WINDOW_MS) {
         this._applyHoldTail(note, 'perfect', judgeTime);
         return { grade: 'perfect', combo: this._combo, damage: this._lastDamage || 0, hold: true };
       }
       if (tailOffset < -HOLD_WINDOW_MS * 2) {
-        // 松得太早 → 尾判 Miss，断连击
         this._applyHoldTail(note, 'miss', judgeTime);
         return { grade: 'miss', combo: this._combo, damage: 0, hold: true };
       }
-      // 略早/略晚 → 尾判 good
       this._applyHoldTail(note, 'good', judgeTime);
       return { grade: 'good', combo: this._combo, damage: this._lastDamage || 0, hold: true };
     }
@@ -584,8 +592,7 @@ class CatchSystem {
   }
 
   /**
-   * hold 长按保活：长按重复 keydown（e.repeat）时调用，
-   * 只刷新按键活动时间戳（防止卡顿帧下超时保护误杀），不做任何判定
+   * hold 长按保活：长按重复 keydown（e.repeat）时调用
    */
   handleHoldKeepAlive() {
     for (const note of this._notes) {
@@ -597,7 +604,7 @@ class CatchSystem {
    * hold 头判：命中后进入长按状态，伤害/连击与普通 tap 一致（物量 +1）
    * @param {CatchNote} note
    * @param {string} grade - 头判精度
-   * @param {number} [judgeTime] - 判定时刻（输入事件时间）
+   * @param {number} [judgeTime] - 判定时刻
    * @private
    */
   _applyHoldHead(note, grade, judgeTime) {
@@ -607,7 +614,6 @@ class CatchSystem {
     this._lastGrade = grade;
     this._lastHitTime = t;
 
-    // 物量：头判计入连击（与 tap 同规则）
     if (grade === 'perfect') {
       this._combo++;
       if (this._combo > this._maxCombo) this._maxCombo = this._combo;
@@ -628,10 +634,15 @@ class CatchSystem {
       this._flashTimer = 150;
     }
 
-    // 玩家耐力损失（同 tap）
+    // 玩家耐力损失（Boss 特性可能提高）
     const playerDrain = this._getPlayerDrain(grade, this._playerStamina.max);
     this._playerStamina.current = Math.max(0, this._playerStamina.current - playerDrain);
+
+    // Boss 技能免疫（需求2）
+    if (this._skillBlocksGrade(grade)) dmg = 0;
+    // 鱼耐力减少
     this._fishStamina.current = Math.max(0, this._fishStamina.current - dmg);
+
     this._setShake(grade);
     this._lastDamage = dmg;
 
@@ -649,7 +660,7 @@ class CatchSystem {
    * hold 尾判：松开精度判定，只加伤害不改 combo（物量已在头判计入）
    * @param {CatchNote} note
    * @param {string} grade - 尾判精度（perfect/good/miss）
-   * @param {number} [judgeTime] - 判定时刻（输入事件时间）
+   * @param {number} [judgeTime] - 判定时刻
    * @private
    */
   _applyHoldTail(note, grade, judgeTime) {
@@ -661,13 +672,17 @@ class CatchSystem {
     this._lastGrade = grade;
     this._lastHitTime = t;
 
-    const dmg = this._baseDamage * (TAIL_DMG_MULT[grade] || 0);
+    let dmg = this._baseDamage * (TAIL_DMG_MULT[grade] || 0);
     if (grade === 'miss') {
-      this._combo = 0; // 尾判 Miss 断连击
+      this._combo = 0;
       const drain = this._getPlayerDrain('miss', this._playerStamina.max);
       this._playerStamina.current = Math.max(0, this._playerStamina.current - drain);
     }
+    // Boss 技能免疫（需求2）
+    if (this._skillBlocksGrade(grade)) dmg = 0;
+    // 鱼耐力减少
     this._fishStamina.current = Math.max(0, this._fishStamina.current - dmg);
+
     this._setShake(grade);
     this._lastDamage = dmg;
 
@@ -682,7 +697,7 @@ class CatchSystem {
   }
 
   /**
-   * 判定单个标记等级（T-021 平衡二轮：窗口收窄，更高精度要求）
+   * 判定单个标记等级（T-021 平衡二轮：窗口收窄）
    * @param {CatchNote} note
    * @param {number} offset - ms 偏差
    * @returns {string}
@@ -699,7 +714,7 @@ class CatchSystem {
    * @param {CatchNote} note
    * @param {string} grade
    * @param {number} [dmgOverride] - 自定义伤害（hold 使用）；缺省按 grade 系数
-   * @param {number} [judgeTime] - 判定时刻（输入事件时间）
+   * @param {number} [judgeTime] - 判定时刻
    */
   _applyHit(note, grade, dmgOverride, judgeTime) {
     const t = (typeof judgeTime === 'number') ? judgeTime : this._elapsed;
@@ -734,10 +749,12 @@ class CatchSystem {
       }
     }
 
-    // 玩家耐力损失（spec 2.3.4）
+    // 玩家耐力损失（Boss 特性可能提高）
     const playerDrain = this._getPlayerDrain(grade, this._playerStamina.max);
     this._playerStamina.current = Math.max(0, this._playerStamina.current - playerDrain);
 
+    // Boss 技能免疫（需求2）：技能激活期间对应等级伤害无效
+    if (this._skillBlocksGrade(grade)) dmg = 0;
     // 鱼耐力减少
     this._fishStamina.current = Math.max(0, this._fishStamina.current - dmg);
 
@@ -815,19 +832,49 @@ class CatchSystem {
   }
 
   /**
-   * 玩家耐力消耗（spec 2.3.4）
+   * Boss 技能是否激活（需求2）：周期 = 激活 + 冷却
+   * @returns {boolean}
+   */
+  _isSkillActive() {
+    if (!this._bossSkill) return false;
+    const period = this._bossSkill.duration + this._bossSkill.cooldown;
+    return (this._elapsed % period) < this._bossSkill.duration;
+  }
+
+  /**
+   * 当前技能是否免疫该判定等级（需求2）
+   * @param {string} grade
+   * @returns {boolean}
+   */
+  _skillBlocksGrade(grade) {
+    if (!this._bossSkill || !this._isSkillActive()) return false;
+    switch (this._bossSkill.type) {
+      case 'immuneGood': return grade === 'good';
+      case 'immuneGreat': return grade === 'great';
+      case 'immunePerfectOnly': return grade !== 'perfect';
+      default: return false;
+    }
+  }
+
+  /**
+   * 玩家耐力消耗（spec 2.3.4；Boss 特性可能提高受到的伤害）
    * @param {string} grade
    * @param {number} maxStamina
    * @returns {number}
    */
   _getPlayerDrain(grade, maxStamina) {
+    let drain;
     switch (grade) {
-      case 'perfect': return 0;
-      case 'great': return maxStamina * 0.02;
-      case 'good': return maxStamina * 0.05;
-      case 'miss': return maxStamina * 0.12;
-      default: return 0;
+      case 'perfect': drain = 0; break;
+      case 'great': drain = maxStamina * 0.02; break;
+      case 'good': drain = maxStamina * 0.05; break;
+      case 'miss': drain = maxStamina * 0.12; break;
+      default: drain = 0; break;
     }
+    if (this._bossTrait && this._bossTrait.playerDamageMult) {
+      drain *= this._bossTrait.playerDamageMult;
+    }
+    return drain;
   }
 
   /**
@@ -949,6 +996,15 @@ class CatchSystem {
     sh.remaining = this._shake.remaining;
     v.flashWhite = this._flashWhite;
     v.floatingTexts = this._updateTextViews();
+
+    // Boss 技能状态（需求2，供 UI 显示）
+    if (this._bossSkill) {
+      const bs = v.bossSkill || (v.bossSkill = {});
+      bs.active = this._isSkillActive();
+      bs.name = this._bossSkill.name;
+    } else if (v.bossSkill) {
+      v.bossSkill = null;
+    }
     return v;
   }
 
