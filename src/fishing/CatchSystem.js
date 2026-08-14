@@ -97,15 +97,16 @@ function makeTapBeats(gaps) {
  * gap = 距上一节拍开始的时间(ms)；type = 'tap'|'hold'；hold 键 dur = 时长(ms)
  * 用户示例: 'xx xx xx' 三组二连弹；'xxxxxx xxxxxx' 两组六连；'xx x xx x xxxxxx|-----' 组合+长按
  * 注: hold 只允许出现在键型末尾（单键输入下，长按期间无法再点按）
+ * 2026-07-27 用户反馈"轻松模式活不过三秒"：连打间隔 110→150ms、组间隔放宽（更易击打）
  */
 const BOSS_PATTERN_LIB = Object.freeze([
-  { name: 'trill',      beats: makeTapBeats([110, 240, 110, 240, 110]) }, // xx xx xx
-  { name: 'burst4',     beats: makeTapBeats([115, 115, 115]) },           // xxxx
-  { name: 'stream6',    beats: makeTapBeats([110, 110, 110, 110, 110]) }, // xxxxxx
-  { name: 'dblStream',  beats: makeTapBeats([110, 110, 110, 110, 110, 320, 110, 110, 110, 110, 110]) }, // xxxxxx xxxxxx
-  { name: 'streamHold', beats: makeTapBeats([110, 110, 110, 110, 110]).concat([{ gap: 260, type: 'hold', dur: 700 }]) }, // xxxxxx|-----
-  { name: 'mixed',      beats: makeTapBeats([110, 240, 110, 240, 240, 115, 115, 115, 115, 115, 115]).concat([{ gap: 260, type: 'hold', dur: 750 }]) }, // xx x xx x xxxxxx|-----
-  { name: 'stair',      beats: makeTapBeats([180, 120, 240, 110, 200, 130]) }, // 变速楼梯
+  { name: 'trill',      beats: makeTapBeats([150, 320, 150, 320, 150]) }, // xx xx xx
+  { name: 'burst4',     beats: makeTapBeats([150, 150, 150]) },           // xxxx
+  { name: 'stream6',    beats: makeTapBeats([150, 150, 150, 150, 150]) }, // xxxxxx
+  { name: 'dblStream',  beats: makeTapBeats([150, 150, 150, 150, 150, 400, 150, 150, 150, 150, 150]) }, // xxxxxx xxxxxx
+  { name: 'streamHold', beats: makeTapBeats([150, 150, 150, 150, 150]).concat([{ gap: 300, type: 'hold', dur: 700 }]) }, // xxxxxx|-----
+  { name: 'mixed',      beats: makeTapBeats([150, 320, 150, 320, 320, 150, 150, 150, 150, 150, 150]).concat([{ gap: 300, type: 'hold', dur: 750 }]) }, // xx x xx x xxxxxx|-----
+  { name: 'stair',      beats: makeTapBeats([220, 160, 300, 150, 260, 180]) }, // 变速楼梯
 ]);
 
 import {
@@ -468,15 +469,18 @@ class CatchSystem {
       }
       lastIndex = idx;
       const pattern = lib[idx];
+      // 节拍时间必须累积（beat.gap = 与上一节拍的间隔）——
+      // 旧 bug: t + beat.gap 全部从模式起点起算，导致键在同一时刻重叠、自动 miss
+      let beatTime = t;
       for (const beat of pattern.beats) {
+        beatTime += beat.gap;
         const dur = (beat.type === 'hold')
           ? (beat.dur || HOLD_MIN_MS + fp * HOLD_PER_FP_MS)
           : 0;
-        notes.push(new CatchNote(notes.length, t + beat.gap, this._noteSpeed, beat.type, dur));
+        notes.push(new CatchNote(notes.length, beatTime, this._noteSpeed, beat.type, dur));
       }
       const lastBeat = pattern.beats[pattern.beats.length - 1];
-      const patternEnd = t + lastBeat.gap + (lastBeat.type === 'hold' ? lastBeat.dur : 0);
-      t = patternEnd + this._noteInterval * 1.2;
+      t = beatTime + (lastBeat.type === 'hold' ? lastBeat.dur : 0) + this._noteInterval * 1.2;
     }
     return notes;
   }
@@ -981,7 +985,8 @@ class CatchSystem {
   }
 
   /**
-   * 玩家耐力消耗（轻松模式：非 miss 不扣血、perfect 回血 +4%；Boss 特性放大受到的伤害）
+   * 玩家耐力消耗（轻松模式：非 miss 不扣血、perfect 回血 +5%；Boss 特性放大受到的伤害）
+   * 2026-07-27 用户反馈"轻松模式活不过三秒"：miss 12%→10%、回血 4%→5%（进一步放宽）
    * @param {string} grade
    * @param {number} maxStamina
    * @returns {number} 正=扣血，负=回血
@@ -989,12 +994,12 @@ class CatchSystem {
   _getPlayerDrain(grade, maxStamina) {
     let drain;
     if (this._judgeMode === 'easy') {
-      // 轻松模式：miss 扣血，great/good 不扣，perfect 回血 4%
+      // 轻松模式：miss 扣血，great/good 不扣，perfect 回血 5%
       switch (grade) {
-        case 'perfect': drain = -maxStamina * 0.04; break;
+        case 'perfect': drain = -maxStamina * 0.05; break;
         case 'great':
         case 'good': drain = 0; break;
-        case 'miss': drain = maxStamina * 0.12; break;
+        case 'miss': drain = maxStamina * 0.10; break;
         default: drain = 0; break;
       }
     } else {

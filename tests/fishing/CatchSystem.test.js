@@ -23,6 +23,7 @@ const BOSS_FISH = {
   noteDensityMult: 0.8,
   trait: { name: '痛击', playerDamageMult: 1.5 },
   skill: { name: '甲壳屏障', type: 'immuneGood', duration: 3000, cooldown: 10000 },
+  isBoss: true, // 走 Boss 复杂键型库路径（与 BossBattleScreen 一致）
 };
 
 /** 低耐力鱼：鲤鱼（FP=3, R=2） */
@@ -80,14 +81,14 @@ test('Good 命中: 玩家耐力损失约 5%', () => {
   assert.ok(Math.abs((s.playerStamina.max - s.playerStamina.current) - drain) <= 1);
 });
 
-test('Miss 命中: 玩家耐力损失约 12%，鱼不掉血', () => {
+test('Miss 命中: 玩家耐力损失约 10%，鱼不掉血', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const fishHp0 = cs.getState().fishStamina.current;
   advanceTo(cs, cs._notes[0].expectedTime + 200); // 偏离 200ms → 自动 Miss
   const s = cs.getState();
   assert.equal(s.fishStamina.current, fishHp0);
-  const drain = Math.round(s.playerStamina.max * 0.12);
+  const drain = Math.round(s.playerStamina.max * 0.10);
   assert.ok(Math.abs((s.playerStamina.max - s.playerStamina.current) - drain) <= 1);
 });
 
@@ -193,7 +194,7 @@ test('hold: 头判 Good 进入长按但断连击', () => {
   assert.equal(cs.getState().combo, 0); // 尾判不改变 combo
 });
 
-test('hold: 松得太早（>300ms）→ 尾判 Miss 断连击并扣 12% 耐力', () => {
+test('hold: 松得太早（>300ms）→ 尾判 Miss 断连击并扣 10% 耐力', () => {
   const cs = new CatchSystem();
   cs.start(FISH);
   const n = makeHoldNote(cs);
@@ -208,7 +209,7 @@ test('hold: 松得太早（>300ms）→ 尾判 Miss 断连击并扣 12% 耐力',
   assert.equal(cs.getState().combo, 0); // 尾判 miss 断连击
 
   const s = cs.getState();
-  const drain = Math.round(s.playerStamina.max * 0.12);
+  const drain = Math.round(s.playerStamina.max * 0.10);
   assert.ok(Math.abs((s.playerStamina.max - s.playerStamina.current) - drain) <= 1);
 });
 
@@ -351,14 +352,14 @@ test('轻松模式耐力: miss 扣血、great/good 不扣、perfect 回血', () 
   cs.handleInput();
   assert.equal(cs.getState().playerStamina.current, max);
 
-  // 先扣到半血，再 perfect 验证回血 +4%（用第 2 个键）
+  // 先扣到半血，再 perfect 验证回血 +5%（用第 2 个键）
   cs._playerStamina.current = max * 0.5;
   cs._elapsed = cs._notes[1].expectedTime;
   const rp = cs.handleInput();
   assert.equal(rp.grade, 'perfect');
-  const healed = max * 0.5 + max * 0.04;
+  const healed = max * 0.5 + max * 0.05;
   assert.ok(Math.abs(cs.getState().playerStamina.current - healed) <= 1,
-    'perfect 应回血 4%');
+    'perfect 应回血 5%');
 
   // good 不扣血（轻松窗口 good ≤120ms，用第 3 个键）
   const beforeGood = cs.getState().playerStamina.current;
@@ -367,13 +368,13 @@ test('轻松模式耐力: miss 扣血、great/good 不扣、perfect 回血', () 
   assert.equal(r.grade, 'good');
   assert.equal(cs.getState().playerStamina.current, beforeGood, '轻松模式 good 不扣血');
 
-  // miss 扣 12%（第 4 个键自动 Miss）
+  // miss 扣 10%（第 4 个键自动 Miss）
   cs._elapsed = cs._notes[3].expectedTime + 200;
   cs.update(0); // 触发自动 Miss
   const afterMiss = cs.getState().playerStamina.current;
-  const expectedDrain = max * 0.12;
+  const expectedDrain = max * 0.10;
   assert.ok(Math.abs((beforeGood - afterMiss) - expectedDrain) <= 1,
-    'miss 应扣 12%');
+    'miss 应扣 10%');
 });
 
 test('补充键后判定连续性: 多次补充不破坏键序列与索引（防卡死回归）', () => {
@@ -478,7 +479,7 @@ test('Boss 血量与键密度生效', () => {
   assert.ok(cs.getNoteInterval() < base, 'Boss 键间隔应比普通传说鱼更密');
 });
 
-test('Boss 特性: 对玩家伤害提高（miss 扣 12% × 1.5）', () => {
+test('Boss 特性: 对玩家伤害提高（轻松 miss 扣 10% × 1.5）', () => {
   const cs = new CatchSystem();
   cs.start(BOSS_FISH);
   cs._notes = cs._notes.slice(0, 1);
@@ -486,7 +487,7 @@ test('Boss 特性: 对玩家伤害提高（miss 扣 12% × 1.5）', () => {
   cs._elapsed = cs._notes[0].expectedTime + 200; // 超过判定窗口
   cs.update(0); // 触发自动 Miss
   const s = cs.getState();
-  const expectedDrain = playerMax * 0.12 * 1.5;
+  const expectedDrain = playerMax * 0.10 * 1.5;
   assert.ok(Math.abs((playerMax - s.playerStamina.current) - expectedDrain) <= 1,
     'Boss 特性应提高玩家受到的耐力伤害');
 });
@@ -591,7 +592,7 @@ test('补充键从轨道起点进入: 新键 timeLeft ≥ 视觉旅行时间（�
   }
 });
 
-test('Boss 键表使用复杂键型库: 含 hold 组合与 ≤130ms 快速连打段', () => {
+test('Boss 键表使用复杂键型库: 含 hold 组合与快速连打段', () => {
   const cs = new CatchSystem();
   cs.start(BOSS_FISH);
   const notes = cs._notes;
@@ -600,8 +601,8 @@ test('Boss 键表使用复杂键型库: 含 hold 组合与 ≤130ms 快速连打
   for (let i = 1; i < notes.length; i++) {
     minGap = Math.min(minGap, notes[i].expectedTime - notes[i - 1].expectedTime);
   }
-  assert.ok(minGap <= 130,
-    '应存在快速连打段（trill/stream ≤130ms），实际最小间隔 ' + minGap + 'ms');
+  assert.ok(minGap <= 160,
+    '应存在快速连打段（trill/stream ≤160ms），实际最小间隔 ' + minGap + 'ms');
 
   // 普通鱼不套用 Boss 键型库（保持原有 tap/double/triplet/hold 混合）
   const cs2 = new CatchSystem();
@@ -612,6 +613,24 @@ test('Boss 键表使用复杂键型库: 含 hold 组合与 ≤130ms 快速连打
   }
   assert.ok(minNormal >= 500,
     '普通鱼最小间隔应 ≥ 500ms（无 1K 快速键型），实际 ' + minNormal);
+});
+
+test('Boss 键型生成无重叠: expectedTime 严格递增、最小间隔 ≥ 120ms（防键重叠自动 miss）', () => {
+  // 回归：旧 bug 中 beat.gap 未累积，导致多个键落在同一时刻 → 打中一个其余自动 miss
+  for (let round = 0; round < 5; round++) {
+    const cs = new CatchSystem();
+    cs.start(BOSS_FISH);
+    const notes = cs._notes;
+    let minGap = Infinity;
+    for (let i = 1; i < notes.length; i++) {
+      const gap = notes[i].expectedTime - notes[i - 1].expectedTime;
+      assert.ok(gap > 0,
+        '第 ' + round + ' 轮 i=' + i + ' 键时间应严格递增（重叠 bug），gap=' + gap);
+      minGap = Math.min(minGap, gap);
+    }
+    assert.ok(minGap >= 120,
+      '第 ' + round + ' 轮最小间隔应 ≥120ms（可击打），实际 ' + minGap);
+  }
 });
 
 test('Boss 键型库结构合法: 全部 beat 时间单调、hold 只在末尾、含用户示例键型', () => {

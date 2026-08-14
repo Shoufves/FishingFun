@@ -45,11 +45,12 @@ test('鱼种选择遵循 SpawnWeight 加权随机', () => {
   assert.equal(counts[1] + counts[2], 2000);
 });
 
-test('等待时间落在 [3s, 30s] 内', () => {
+test('等待时间落在有效范围内', () => {
   mockGameData();
   const ws = new WaitSystem();
   ws.start(1, 1, 'perfect', { reel: { gearRatio: 4 }, line: { sensitivity: 50 } });
-  assert.ok(ws._remainingMs >= 3000 && ws._remainingMs <= 30000);
+  // 公式钳制 [3,30]s 之后乘抛竿乘数（perfect=0.85）→ 实际区间 [2.55, 25.5]s
+  assert.ok(ws._remainingMs >= 2500 && ws._remainingMs <= 30000);
 });
 
 test('高吸引力饵料等待时间更短', () => {
